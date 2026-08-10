@@ -1,0 +1,103 @@
+name: Video Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel config key, for example channel1'
+        required: true
+        type: string
+  # Deliberately no pull_request or pull_request_target trigger.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-pipeline-${{ inputs.channel }}
+  cancel-in-progress: false
+
+env:
+  PRIVATE_REPO: your-username/yt-core
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: your-username/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: core/requirements.txt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        working-directory: core
+        run: pip install -r requirements.txt
+
+      - name: Check if tutorial screen recording is needed
+        id: tutorial-check
+        working-directory: core
+        run: |
+          if python -c "import json,sys; c=json.load(open('config.json')); sys.exit(0 if any(ch.get('format_style')=='tutorial' for ch in c.get('channels',{}).values()) else 1)" 2>/dev/null; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Playwright browser (only when a channel uses format_style=tutorial)
+        if: steps.tutorial-check.outputs.needed == 'true'
+        working-directory: core
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run pipeline
+        working-directory: core
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+        run: python -m scripts.run_pipeline
+
+      - name: Commit results back to private repo
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          CHANNEL: ${{ inputs.channel }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/
+          git commit -m "auto: ${CHANNEL} pipeline run $(date -u +%F-%H%M)" || echo "No data changes"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          for i in 1 2 3 4 5; do
+            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && { echo "push succeeded"; exit 0; }
+            echo "Push conflict (attempt $i/5); retrying..."
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to push after 5 attempts" >&2
+          exit 1
