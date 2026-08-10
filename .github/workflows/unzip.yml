@@ -1,6 +1,10 @@
-name: Auto Unzip
+name: Auto Unzip Root Files
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -8,29 +12,41 @@ permissions:
 jobs:
   unzip:
     runs-on: ubuntu-latest
-    if: ${{!contains(github.event.head_commit.message, 'Auto extracted') }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Unzip to root
+      - name: Unzip all root-level zip files
         run: |
-          pwd
-          ls -lh
           shopt -s nullglob
-          for file in *.zip; do
-            echo "Found zip: $file"
-            unzip -l "$file"
-            echo "Extracting to root..."
-            unzip -o "$file" -d.
-          done
-          echo "--- After extract ---"
-          ls -lh
+          zip_files=(*.zip)
 
-      - name: Commit
+          if [ ${#zip_files[@]} -eq 0 ]; then
+            echo "No zip file found at root, skipping."
+            exit 0
+          fi
+
+          for zip_file in "${zip_files[@]}"; do
+            echo "Unzipping: $zip_file"
+            tmp_dir=$(mktemp -d)
+            unzip -o "$zip_file" -d "$tmp_dir"
+
+            shopt -s dotglob
+            mv "$tmp_dir"/* .
+            shopt -u dotglob
+
+            rm -rf "$tmp_dir"
+            rm -f "$zip_file"
+          done
+
+      - name: Commit and push extracted files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git status
-          git commit -m "Auto extracted zip files" || exit 0
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: auto-unzip root zip file(s) [skip ci]"
+            git push
+          fi
