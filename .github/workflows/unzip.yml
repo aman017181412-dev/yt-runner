@@ -31,9 +31,9 @@ jobs:
             tmp_dir=$(mktemp -d)
             unzip -o "$zip_file" -d "$tmp_dir"
 
-            shopt -s dotglob
-            mv "$tmp_dir"/* .
-            shopt -u dotglob
+            # cp -a merges into existing folders (e.g. .github/) instead of
+            # failing like `mv` does when the destination already exists.
+            cp -a "$tmp_dir"/. .
 
             rm -rf "$tmp_dir"
             rm -f "$zip_file"
