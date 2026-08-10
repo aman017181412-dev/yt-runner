@@ -4,7 +4,6 @@ on: [push]
 
 permissions:
   contents: write
-  workflows: write
 
 jobs:
   unzip:
@@ -13,11 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip to root
+      - name: Unzip to root without workflows
         run: |
           shopt -s nullglob
           for file in *.zip; do
-            unzip -o "$file" -d.
+            echo "Unzipping $file"
+            #.github ফোল্ডার বাদ দিয়ে রুটে unzip করবে
+            unzip -o "$file" -d. -x ".github/*"
             rm "$file"
           done
 
