@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PRIVATE_REPO: your-username/yt-core
+  PRIVATE_REPO: aman017181412-dev/yt-core
 
 jobs:
   gate-and-poll:
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout private core repo
         uses: actions/checkout@v4
         with:
-          repository: your-username/yt-core
+          repository: aman017181412-dev/yt-core
           token: ${{ secrets.PRIVATE_REPO_PAT }}
           path: core
           fetch-depth: 1
