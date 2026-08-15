@@ -7,12 +7,14 @@ Public orchestration repository for the YouTube Content Factory. Keep this repos
 1. Create a private repository named `yt-core` and import the `yt-core` zip.
 2. Replace `your-username/yt-core` in both workflow files with the real private repository path.
 3. Create a fine-grained PAT with access only to `yt-core` and **Contents: Read and write**. Add it here as `PRIVATE_REPO_PAT`.
-4. Add the API secrets listed in the private repo README to this repository's Actions secrets — this now includes optional `GEMINI_API_KEY` (LLM fallback), `ELEVENLABS_API_KEY`/`FISH_API_KEY` (voice fallback), and the per-channel `CHANNELx_YT_TOKEN` + `YOUTUBE_CLIENT_SECRET_JSON` secrets, which `trigger-window.yml` now also uses to check for due thumbnail A/B-test rotations every hour.
+4. Add the API secrets listed in the private repo README to this repository's Actions secrets.
 5. Run the `Video Pipeline` workflow manually once with `channel=channel1` after configuring the private repo.
 
 The trigger workflow dispatches the video workflow using the built-in GitHub token, so the private-repo PAT does not need write access to this public repository.
 
 Required Telegram secrets are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The chat ID is used as an allowlist so approval commands from other chats are ignored.
+
+Note: `trigger-window.yml` runs every hour and now also calls the YouTube API and an LLM directly (for thumbnail/title A/B rotation and the underperformer re-optimization check), not just `video-pipeline.yml` — so `CHANNEL1_YT_TOKEN`/`CHANNEL2_YT_TOKEN`/etc. and at least one of `GROQ_API_KEY`/`OPENROUTER_API_KEY`/`GEMINI_API_KEY` need to be set as secrets here even if you never run the video pipeline manually.
 
 ## Security boundary
 

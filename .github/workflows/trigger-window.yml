@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PRIVATE_REPO: aman017181412-dev/yt-core
+  PRIVATE_REPO: your-username/yt-core
 
 jobs:
   gate-and-poll:
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout private core repo
         uses: actions/checkout@v4
         with:
-          repository: aman017181412-dev/yt-core
+          repository: your-username/yt-core
           token: ${{ secrets.PRIVATE_REPO_PAT }}
           path: core
           fetch-depth: 1
@@ -40,7 +40,7 @@ jobs:
         working-directory: core
         run: pip install -r requirements.txt
 
-      - name: Gate check, Telegram poll, and A/B rotation check
+      - name: Gate check and Telegram poll
         working-directory: core
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -48,12 +48,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLIC_REPO: ${{ github.repository }}
           PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
-          # Needed here too (not just in video-pipeline.yml) because this
-          # workflow's ab_test.run_rotation() call fetches per-video metrics
-          # and swaps thumbnails between the scheduled pipeline runs.
-          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          # This job also runs ab_test.run_rotation() and reoptimize.run_check()
+          # every hour (see trigger_window.py's main()) -- both call the
+          # YouTube Data/Analytics API per channel and reoptimize.py also
+          # calls an LLM, so these need to be here too, not just in
+          # video-pipeline.yml.
           CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
           CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -m scripts.trigger_window
 
       - name: Commit Telegram configuration changes
