@@ -1,0 +1,7 @@
+{
+  "enabled_hours_utc": [0, 4, 8, 12, 16, 20],
+  "window_minutes": 10,
+  "auto_trigger": true,
+  "require_approval": true,
+  "max_channels_per_wave": 6
+}
