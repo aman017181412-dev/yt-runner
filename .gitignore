@@ -1,2 +1,15 @@
-.DS_Store
-*.log
+__pycache__/
+*.pyc
+.env
+.venv/
+media/
+*.mp4
+*.webm
+*.mov
+*.mp3
+*.wav
+*.jpg
+*.jpeg
+*.png
+*.srt
+*.tmp
