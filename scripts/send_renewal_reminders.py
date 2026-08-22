@@ -48,10 +48,12 @@ def send_telegram(text: str) -> None:
 
 
 def resolve_client_id(ch: dict, config: dict) -> str:
-    """Per-channel client_id if set, else the shared default_client_id.
+    """Client_id for this channel's project (or 'default' if unset).
     client_id is not sensitive -- it's fine to keep in this repo file.
-    client_secret lives only in Vercel's CLIENT_SECRETS_JSON env var."""
-    return ch.get("client_id") or config.get("default_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret lives only in Vercel's CLIENT_SECRETS_JSON env var,
+    keyed by the same project name."""
+    project = ch.get("project", "default")
+    return config.get("projects", {}).get(project, "")
 
 
 def build_auth_url(channel_key: str, client_id: str, gmail_hint: str) -> str:
