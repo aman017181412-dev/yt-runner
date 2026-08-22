@@ -1,5 +1,6 @@
 {
-  "_comment": "List every channel here. 'key' must match the CHANNEL{n} secret naming (channel1 -> CHANNEL1_YT_TOKEN). 'label' is a short human name for the Telegram message. 'gmail_hint' pre-fills the Google login screen with that email (also used as text in the reminder so you know which Gmail to open). 'youtube_channel_name' is the exact name shown on YouTube's channel-picker screen (needed when one Gmail has more than one channel) -- put it in so the reminder tells you exactly which one to tap.",
+  "_comment": "List every channel here. 'key' must match the CHANNEL{n} secret naming (channel1 -> CHANNEL1_YT_TOKEN). 'label' is a short human name for the Telegram message. 'gmail_hint' pre-fills the Google login screen with that email. 'youtube_channel_name' is the exact name shown on YouTube's channel-picker screen (needed when one Gmail has more than one channel). 'client_id' is OPTIONAL per-channel override for channels on their own Google Cloud project; if omitted, 'default_client_id' below is used. client_id is NOT sensitive -- it's fine here. The matching client_secret values live ONLY in Vercel's CLIENT_SECRETS_JSON env var, never in this repo.",
+  "default_client_id": "723118062589-568im7pc6s9fuvis2l77l2uei2d0n50h.apps.googleusercontent.com",
   "channels": [
     {
       "key": "channel1",
@@ -17,7 +18,8 @@
       "key": "channel3",
       "label": "Reddit Stories",
       "gmail_hint": "channel1owner@gmail.com",
-      "youtube_channel_name": "Reddit Relationship & Family Drama"
+      "youtube_channel_name": "Reddit Relationship & Family Drama",
+      "client_id": "111111111111-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.apps.googleusercontent.com"
     }
   ]
 }

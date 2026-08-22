@@ -47,9 +47,16 @@ def send_telegram(text: str) -> None:
     ).raise_for_status()
 
 
-def build_auth_url(channel_key: str, gmail_hint: str) -> str:
+def resolve_client_id(ch: dict, config: dict) -> str:
+    """Per-channel client_id if set, else the shared default_client_id.
+    client_id is not sensitive -- it's fine to keep in this repo file.
+    client_secret lives only in Vercel's CLIENT_SECRETS_JSON env var."""
+    return ch.get("client_id") or config.get("default_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
+
+
+def build_auth_url(channel_key: str, client_id: str, gmail_hint: str) -> str:
     params = {
-        "client_id": os.environ["GOOGLE_CLIENT_ID"],
+        "client_id": client_id,
         "redirect_uri": os.environ["REDIRECT_URI"],  # https://<app>.vercel.app/api/oauth-callback
         "response_type": "code",
         "access_type": "offline",
@@ -88,7 +95,8 @@ def main() -> int:
     for ch in due:
         gmail_hint = ch.get("gmail_hint", "")
         yt_name = ch.get("youtube_channel_name", "")
-        url = build_auth_url(ch["key"], gmail_hint)
+        client_id = resolve_client_id(ch, config)
+        url = build_auth_url(ch["key"], client_id, gmail_hint)
         label = ch.get("label", ch["key"])
 
         lines = [f"🔔 \"{label}\" এর YouTube token renew করার সময় হয়েছে।", ""]
