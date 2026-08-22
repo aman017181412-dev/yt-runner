@@ -1,0 +1,27 @@
+name: Token Renewal Reminder
+
+on:
+  schedule:
+    # Runs daily at 09:00 UTC (adjust to a time you're actually free to tap a link)
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}  # lets you trigger it manually from the Actions tab too
+
+jobs:
+  check-and-remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install requests
+
+      - name: Send renewal reminders for channels that are due
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
+        run: python scripts/send_renewal_reminders.py
