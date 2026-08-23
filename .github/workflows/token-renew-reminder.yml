@@ -22,6 +22,30 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
+          # One line per channel secret so the script can live-test each
+          # token (see check_token_live() in send_renewal_reminders.py).
+          # Add/remove lines here to match the channels you actually have
+          # -- an unset one is harmless, the script just skips its live
+          # check and falls back to the age-based reminder for it.
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          CHANNEL3_YT_TOKEN: ${{ secrets.CHANNEL3_YT_TOKEN }}
+          CHANNEL4_YT_TOKEN: ${{ secrets.CHANNEL4_YT_TOKEN }}
+          CHANNEL5_YT_TOKEN: ${{ secrets.CHANNEL5_YT_TOKEN }}
+          CHANNEL6_YT_TOKEN: ${{ secrets.CHANNEL6_YT_TOKEN }}
+          CHANNEL7_YT_TOKEN: ${{ secrets.CHANNEL7_YT_TOKEN }}
+          CHANNEL8_YT_TOKEN: ${{ secrets.CHANNEL8_YT_TOKEN }}
+          CHANNEL9_YT_TOKEN: ${{ secrets.CHANNEL9_YT_TOKEN }}
+          CHANNEL10_YT_TOKEN: ${{ secrets.CHANNEL10_YT_TOKEN }}
+          CHANNEL11_YT_TOKEN: ${{ secrets.CHANNEL11_YT_TOKEN }}
+          CHANNEL12_YT_TOKEN: ${{ secrets.CHANNEL12_YT_TOKEN }}
+          CHANNEL13_YT_TOKEN: ${{ secrets.CHANNEL13_YT_TOKEN }}
+          CHANNEL14_YT_TOKEN: ${{ secrets.CHANNEL14_YT_TOKEN }}
+          CHANNEL15_YT_TOKEN: ${{ secrets.CHANNEL15_YT_TOKEN }}
+          CHANNEL16_YT_TOKEN: ${{ secrets.CHANNEL16_YT_TOKEN }}
+          CHANNEL17_YT_TOKEN: ${{ secrets.CHANNEL17_YT_TOKEN }}
+          CHANNEL18_YT_TOKEN: ${{ secrets.CHANNEL18_YT_TOKEN }}
+          CHANNEL19_YT_TOKEN: ${{ secrets.CHANNEL19_YT_TOKEN }}
+          CHANNEL20_YT_TOKEN: ${{ secrets.CHANNEL20_YT_TOKEN }}
         run: python scripts/send_renewal_reminders.py

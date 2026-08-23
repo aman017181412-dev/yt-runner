@@ -1,15 +1,29 @@
 """Run daily by .github/workflows/token-renew-reminder.yml.
 
-For every channel listed in data/channel_auth_config.json, checks
-data/token_renewed.json for when it was last renewed. If it's due
-(>= RENEW_AFTER_DAYS old, or never renewed), sends a Telegram message
-with a tap-to-authorize Google OAuth link. The redirect target is the
-Vercel function (yt-token-renewer), which does the actual token
-exchange + GitHub secret update once you tap "Allow".
+Two independent checks decide whether a channel needs a reminder:
 
-This script only ever *sends a link* -- it never touches your Google
-account itself. Nothing here can complete authorization on its own;
-that tap is always yours.
+  1. AGE CHECK (preventive): data/token_renewed.json says how long ago
+     each channel was last renewed. >= RENEW_AFTER_DAYS old (or never
+     renewed) -> reminder, so you renew *before* Google's 7-day
+     Testing-mode cutoff.
+
+  2. LIVE CHECK (reactive safety net): actually calls Google's token
+     endpoint with each channel's current stored refresh_token (read
+     from the CHANNELN_YT_TOKEN secret, injected as an env var by the
+     workflow). If Google rejects it right now for ANY reason --
+     invalid_grant (expired/revoked), invalid_scope (consent screen
+     scope mismatch), whatever -- that channel is flagged urgently,
+     even if it's "only" 1 day old. This is what would have caught
+     the invalid_scope issue immediately instead of only surfacing it
+     when the video pipeline itself failed.
+
+Either check being true sends a tap-to-authorize Google OAuth link via
+Telegram. The redirect target is the Vercel function (yt-token-renewer),
+which does the actual token exchange + GitHub secret update once you
+tap "Allow".
+
+This script only ever *sends a link* and *tests a refresh* -- it never
+completes authorization on its own. That tap is always yours.
 """
 from __future__ import annotations
 import json
@@ -22,9 +36,9 @@ from urllib.parse import urlencode
 import requests
 
 RENEW_AFTER_DAYS = 6  # send the reminder a day before Google's 7-day cutoff
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPES = [
-    "https://www.googleapis.com/auth/youtube",
-    "https://www.googleapis.com/auth/youtube.force-ssl",
+    "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
@@ -56,6 +70,55 @@ def resolve_client_id(ch: dict, config: dict) -> str:
     return config.get("projects", {}).get(project, "")
 
 
+def check_token_live(channel_key: str) -> tuple[bool, str]:
+    """Actually asks Google whether this channel's CURRENT stored token
+    still works. Returns (is_valid, reason). reason is "" when valid,
+    or Google's error code/description when not.
+
+    Reads the token JSON from an env var the workflow injects from the
+    matching GitHub secret, e.g. CHANNEL1_YT_TOKEN. If that secret isn't
+    set (channel never authorized through this system, or workflow YAML
+    hasn't been updated to include it yet), treated as "unknown, skip
+    live check" -- the age check will still catch it since it'll never
+    have a token_renewed.json entry either.
+    """
+    env_key = f"{channel_key.upper()}_YT_TOKEN"
+    raw = os.environ.get(env_key)
+    if not raw:
+        return True, ""  # nothing to test; age check handles "never authorized"
+
+    try:
+        token = json.loads(raw)
+        refresh_token = token["refresh_token"]
+        client_id = token["client_id"]
+        client_secret = token["client_secret"]
+    except (json.JSONDecodeError, KeyError) as e:
+        return False, f"stored token JSON malformed ({e})"
+
+    try:
+        resp = requests.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "refresh_token",
+            },
+            timeout=20,
+        )
+    except requests.RequestException as e:
+        return True, f"network error checking token, skipping ({e})"  # don't false-alarm on a flaky network
+
+    if resp.ok:
+        return True, ""
+    try:
+        err = resp.json()
+        reason = f"{err.get('error')}: {err.get('error_description', '')}"
+    except ValueError:
+        reason = f"HTTP {resp.status_code}"
+    return False, reason
+
+
 def build_auth_url(channel_key: str, client_id: str, gmail_hint: str) -> str:
     params = {
         "client_id": client_id,
@@ -78,30 +141,43 @@ def main() -> int:
     renewed = load_json(ROOT / "data" / "token_renewed.json", {})
     now = datetime.now(timezone.utc)
 
-    due = []
+    due = []  # list of (channel, reason) -- reason is "" for a normal age-based reminder
     for ch in config.get("channels", []):
         key = ch["key"]
+
+        # Check 1: age
         last = renewed.get(key)
         if last:
-            last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
-            age = now - last_dt
+            age = now - datetime.fromisoformat(last.replace("Z", "+00:00"))
         else:
             age = None  # never renewed via this system
-        if age is None or age >= timedelta(days=RENEW_AFTER_DAYS):
-            due.append(ch)
+        age_due = age is None or age >= timedelta(days=RENEW_AFTER_DAYS)
+
+        # Check 2: live refresh test
+        is_valid, live_reason = check_token_live(key)
+
+        if not is_valid:
+            due.append((ch, live_reason))
+        elif age_due:
+            due.append((ch, ""))
 
     if not due:
         print("No channels due for renewal today.")
         return 0
 
-    for ch in due:
+    for ch, reason in due:
         gmail_hint = ch.get("gmail_hint", "")
         yt_name = ch.get("youtube_channel_name", "")
         client_id = resolve_client_id(ch, config)
         url = build_auth_url(ch["key"], client_id, gmail_hint)
         label = ch.get("label", ch["key"])
 
-        lines = [f"🔔 \"{label}\" এর YouTube token renew করার সময় হয়েছে।", ""]
+        if reason:
+            header = f"🚨 \"{label}\" এর token এখনই কাজ করছে না ({reason})। এখনই renew করুন।"
+        else:
+            header = f"🔔 \"{label}\" এর YouTube token renew করার সময় হয়েছে।"
+
+        lines = [header, ""]
         if gmail_hint:
             lines.append(f"📧 Gmail: {gmail_hint}")
         if yt_name:
@@ -113,7 +189,7 @@ def main() -> int:
             "Allow দেওয়ার পর একটা ✅ কনফার্মেশন মেসেজ পাবেন।",
         ]
         send_telegram("\n".join(lines))
-        print(f"Reminder sent for {ch['key']}")
+        print(f"Reminder sent for {ch['key']}" + (f" (live check failed: {reason})" if reason else ""))
 
     return 0
 
