@@ -1,27 +1,13 @@
 {
-  "_comment": "'projects' lists every Google Cloud project by a short name -> its client_id. 'default' is required (your original project). Each channel optionally sets 'project' to one of these names; if omitted, 'default' is used. client_secret values are NEVER here -- they live only in Vercel's CLIENT_SECRETS_JSON env var, keyed by these same project names.",
   "projects": {
-    "default": "723118062589-568im7pc6s9fuvis2l77l2uei2d0n50h.apps.googleusercontent.com",
-    "project2": "PASTE-PROJECT-2-CLIENT-ID.apps.googleusercontent.com",
-    "project3": "PASTE-PROJECT-3-CLIENT-ID.apps.googleusercontent.com"
+    "default": "723118062589-568im7pc6s9fuvis2l77l2uei2d0n50h.apps.googleusercontent.com"
   },
   "channels": [
-    { "key": "channel1", "label": "Channel 1", "gmail_hint": "channel1@gmail.com", "youtube_channel_name": "Channel 1 Name" },
-    { "key": "channel2", "label": "Channel 2", "gmail_hint": "channel2@gmail.com", "youtube_channel_name": "Channel 2 Name" },
-    { "key": "channel3", "label": "Channel 3", "gmail_hint": "channel3@gmail.com", "youtube_channel_name": "Channel 3 Name" },
-    { "key": "channel4", "label": "Channel 4", "gmail_hint": "channel4@gmail.com", "youtube_channel_name": "Channel 4 Name" },
-
-    { "key": "channel5",  "label": "Channel 5",  "gmail_hint": "channel5@gmail.com",  "youtube_channel_name": "Channel 5 Name",  "project": "project2" },
-    { "key": "channel6",  "label": "Channel 6",  "gmail_hint": "channel6@gmail.com",  "youtube_channel_name": "Channel 6 Name",  "project": "project2" },
-    { "key": "channel7",  "label": "Channel 7",  "gmail_hint": "channel7@gmail.com",  "youtube_channel_name": "Channel 7 Name",  "project": "project2" },
-    { "key": "channel8",  "label": "Channel 8",  "gmail_hint": "channel8@gmail.com",  "youtube_channel_name": "Channel 8 Name",  "project": "project2" },
-    { "key": "channel9",  "label": "Channel 9",  "gmail_hint": "channel9@gmail.com",  "youtube_channel_name": "Channel 9 Name",  "project": "project2" },
-    { "key": "channel10", "label": "Channel 10", "gmail_hint": "channel10@gmail.com", "youtube_channel_name": "Channel 10 Name", "project": "project2" },
-
-    { "key": "channel11", "label": "Channel 11", "gmail_hint": "channel11@gmail.com", "youtube_channel_name": "Channel 11 Name", "project": "project3" },
-    { "key": "channel12", "label": "Channel 12", "gmail_hint": "channel12@gmail.com", "youtube_channel_name": "Channel 12 Name", "project": "project3" },
-    { "key": "channel13", "label": "Channel 13", "gmail_hint": "channel13@gmail.com", "youtube_channel_name": "Channel 13 Name", "project": "project3" },
-    { "key": "channel14", "label": "Channel 14", "gmail_hint": "channel14@gmail.com", "youtube_channel_name": "Channel 14 Name", "project": "project3" },
-    { "key": "channel15", "label": "Channel 15", "gmail_hint": "channel15@gmail.com", "youtube_channel_name": "Channel 15 Name", "project": "project3" }
+    {
+      "key": "channel1",
+      "label": "আপনার চ্যানেলের নাম",
+      "gmail_hint": "mariaahmed6578@gmail.com",
+      "youtube_channel_name": "YouTube-এ ঠিক যেভাবে চ্যানেলের নাম দেখায়"
+    }
   ]
 }
