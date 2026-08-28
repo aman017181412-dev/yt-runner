@@ -1,0 +1,115 @@
+name: Video Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel config key, for example channel1'
+        required: true
+        type: string
+  # Deliberately no pull_request or pull_request_target trigger.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-pipeline-${{ inputs.channel }}
+  cancel-in-progress: false
+
+env:
+  PRIVATE_REPO: aman017181412-dev/yt-core
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: core/requirements.txt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        working-directory: core
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser (for optional tutorial screen recording)
+        working-directory: core
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run pipeline
+        working-directory: core
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          # Single-key setup (unchanged): GROQ_API_KEY / OPENROUTER_API_KEY.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Multi-account key pool (llm.py): one secret per provider holding
+          # comma-separated keys from SEPARATE accounts, e.g.
+          # "key_from_acct1,key_from_acct2,...". Wins over the singular
+          # secret above if both are set. See llm.py's module docstring for
+          # why keys from the SAME account don't help (shared rate limit)
+          # and the ToS note on multiple accounts.
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          # Used both as an LLM fallback (llm.py) and for ctr_check.py's
+          # vision-based thumbnail pre-check, which is Gemini-only. Optional
+          # -- both features no-op cleanly without it.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          # Small setup (1-2 channels): one secret per channel, unchanged.
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          # Larger setup (10-20 channels): ONE secret holding every
+          # channel's token as JSON -- {"channel3": "<token json>", ...} --
+          # so adding a channel never means editing this YAML again. See
+          # lib/config.py's channel_yt_token() for how the two are merged.
+          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
+          # Optional cross-posting (crosspost.py) -- all three unset means
+          # the feature silently no-ops. See that module's docstring before
+          # setting these up; it's the most involved feature to enable.
+          CROSSPOST_UPLOAD_WEBHOOK: ${{ secrets.CROSSPOST_UPLOAD_WEBHOOK }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ID: ${{ secrets.INSTAGRAM_BUSINESS_ID }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+        run: python -m scripts.run_pipeline
+
+      - name: Commit results back to private repo
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          CHANNEL: ${{ inputs.channel }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/
+          git commit -m "auto: ${CHANNEL} pipeline run $(date -u +%F-%H%M)" || echo "No data changes"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          for i in 1 2 3 4 5; do
+            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && { echo "push succeeded"; exit 0; }
+            echo "Push conflict (attempt $i/5); retrying..."
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to push after 5 attempts" >&2
+          exit 1
