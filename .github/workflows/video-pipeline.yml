@@ -69,7 +69,8 @@ jobs:
           # Used both as an LLM fallback (llm.py) and for ctr_check.py's
           # vision-based thumbnail pre-check, which is Gemini-only. Optional
           # -- both features no-op cleanly without it.
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEYS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
