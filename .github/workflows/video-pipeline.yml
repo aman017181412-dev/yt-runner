@@ -71,6 +71,12 @@ jobs:
           # -- both features no-op cleanly without it.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          # Optional, free thumbnail fallback (gemini_direct_thumbnail.py /
+          # asset_factory.py): Cloudflare Workers AI flux-1-schnell, tried
+          # right after Gemini. Both values required together; either
+          # missing just skips this provider.
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
