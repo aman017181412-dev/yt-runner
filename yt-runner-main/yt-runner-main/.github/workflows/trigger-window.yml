@@ -1,0 +1,84 @@
+name: Trigger Window
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 * * * *'
+  # Deliberately no pull_request or pull_request_target trigger.
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: trigger-window
+  cancel-in-progress: false
+
+env:
+  PRIVATE_REPO: aman017181412-dev/yt-core
+
+jobs:
+  gate-and-poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: core/requirements.txt
+
+      - name: Install dependencies
+        working-directory: core
+        run: pip install -r requirements.txt
+
+      - name: Gate check and Telegram poll
+        working-directory: core
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ github.repository }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+          # This job also runs ab_test.run_rotation() and reoptimize.run_check()
+          # every hour (see trigger_window.py's main()) -- both call the
+          # YouTube Data/Analytics API per channel and reoptimize.py also
+          # calls an LLM, so these need to be here too, not just in
+          # video-pipeline.yml.
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m scripts.trigger_window
+
+      - name: Commit Telegram configuration changes
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add config.json data/
+          git commit -m "auto: persist Telegram configuration $(date -u +%F-%H%M)" || echo "No configuration changes"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          for i in 1 2 3 4 5; do
+            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && { echo "push succeeded"; exit 0; }
+            echo "Push conflict (attempt $i/5); retrying..."
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to push after 5 attempts" >&2
+          exit 1

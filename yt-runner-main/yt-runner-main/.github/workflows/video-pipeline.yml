@@ -41,7 +41,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
 
       - name: Install Python dependencies
         working-directory: core
@@ -74,10 +74,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          # Optional (asset_factory.py): higher-quality paid image generation
-          # for warehouse assets when the free Pollinations provider isn't
-          # enough. Unset means Pollinations-only, feature still fully works.
-          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
           # Small setup (1-2 channels): one secret per channel, unchanged.
