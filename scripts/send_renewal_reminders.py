@@ -70,20 +70,48 @@ def resolve_client_id(ch: dict, config: dict) -> str:
     return config.get("projects", {}).get(project, "")
 
 
+def read_channel_token_env(channel_key: str) -> str | None:
+    """Same three-tier lookup as yt-core's channel_yt_token(): a direct
+    CHANNELN_YT_TOKEN secret first, then YT_CHANNEL_TOKENS_JSON, then
+    ALL_SECRETS_JSON (`${{ toJSON(secrets) }}`, passed once from the
+    workflow YAML) -- so a channel's token is found here the moment
+    oauth-callback.js creates its secret, with no YAML edit needed."""
+    env_key = f"{channel_key.upper()}_YT_TOKEN"
+    direct = os.environ.get(env_key)
+    if direct:
+        return direct
+    bundle_raw = os.environ.get("YT_CHANNEL_TOKENS_JSON")
+    if bundle_raw:
+        try:
+            bundle = json.loads(bundle_raw)
+        except json.JSONDecodeError:
+            bundle = {}
+        value = bundle.get(channel_key)
+        if value:
+            return value if isinstance(value, str) else json.dumps(value)
+    all_secrets_raw = os.environ.get("ALL_SECRETS_JSON")
+    if all_secrets_raw:
+        try:
+            all_secrets = json.loads(all_secrets_raw)
+        except json.JSONDecodeError:
+            all_secrets = {}
+        value = all_secrets.get(env_key)
+        if value:
+            return value
+    return None
+
+
 def check_token_live(channel_key: str) -> tuple[bool, str]:
     """Actually asks Google whether this channel's CURRENT stored token
     still works. Returns (is_valid, reason). reason is "" when valid,
     or Google's error code/description when not.
 
-    Reads the token JSON from an env var the workflow injects from the
-    matching GitHub secret, e.g. CHANNEL1_YT_TOKEN. If that secret isn't
-    set (channel never authorized through this system, or workflow YAML
-    hasn't been updated to include it yet), treated as "unknown, skip
-    live check" -- the age check will still catch it since it'll never
-    have a token_renewed.json entry either.
+    Looks up the token via read_channel_token_env() (see there for the
+    three sources checked, in order). If none of them have it, treated
+    as "unknown, skip live check" -- the age check will still catch it
+    since it'll never have a token_renewed.json entry either.
     """
-    env_key = f"{channel_key.upper()}_YT_TOKEN"
-    raw = os.environ.get(env_key)
+    raw = read_channel_token_env(channel_key)
     if not raw:
         return True, ""  # nothing to test; age check handles "never authorized"
 
@@ -173,20 +201,20 @@ def main() -> int:
         label = ch.get("label", ch["key"])
 
         if reason:
-            header = f"🚨 \"{label}\" এর token এখনই কাজ করছে না ({reason})। এখনই renew করুন।"
+            header = f"ЁЯЪи \"{label}\" ржПрж░ token ржПржЦржиржЗ ржХрж╛ржЬ ржХрж░ржЫрзЗ ржирж╛ ({reason})ред ржПржЦржиржЗ renew ржХрж░рзБржиред"
         else:
-            header = f"🔔 \"{label}\" এর YouTube token renew করার সময় হয়েছে।"
+            header = f"ЁЯФФ \"{label}\" ржПрж░ YouTube token renew ржХрж░рж╛рж░ рж╕ржоржпрж╝ рж╣ржпрж╝рзЗржЫрзЗред"
 
         lines = [header, ""]
         if gmail_hint:
-            lines.append(f"📧 Gmail: {gmail_hint}")
+            lines.append(f"ЁЯУз Gmail: {gmail_hint}")
         if yt_name:
-            lines.append(f"📺 Consent স্ক্রিনে channel picker আসলে বেছে নিন: \"{yt_name}\"")
+            lines.append(f"ЁЯУ║ Consent рж╕рзНржХрзНрж░рж┐ржирзЗ channel picker ржЖрж╕рж▓рзЗ ржмрзЗржЫрзЗ ржирж┐ржи: \"{yt_name}\"")
         lines += [
             "",
-            f"লিংক (ট্যাপ করুন):\n{url}",
+            f"рж▓рж┐ржВржХ (ржЯрзНржпрж╛ржк ржХрж░рзБржи):\n{url}",
             "",
-            "Allow দেওয়ার পর একটা ✅ কনফার্মেশন মেসেজ পাবেন।",
+            "Allow ржжрзЗржУржпрж╝рж╛рж░ ржкрж░ ржПржХржЯрж╛ тЬЕ ржХржиржлрж╛рж░рзНржорзЗрж╢ржи ржорзЗрж╕рзЗржЬ ржкрж╛ржмрзЗржиред",
         ]
         send_telegram("\n".join(lines))
         print(f"Reminder sent for {ch['key']}" + (f" (live check failed: {reason})" if reason else ""))
