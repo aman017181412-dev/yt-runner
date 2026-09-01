@@ -25,6 +25,13 @@
       "gmail_hint": "maria017181412@gmail.com",
       "youtube_channel_name": "Drowsy Chronicles",
       "project": "automation1"
+    },
+    {
+      "key": "slep",
+      "label": "slep",
+      "gmail_hint": "maria017181412@gmail.com",
+      "youtube_channel_name": "",
+      "project": "default"
     }
   ],
   "project_names": {
