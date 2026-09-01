@@ -86,10 +86,17 @@ jobs:
           # Small setup (1-2 channels): one secret per channel, unchanged.
           CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
           CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          # Newly added channels -- each needs its own <CHANNELKEY>_YT_TOKEN
+          # line here, or it must be folded into YT_CHANNEL_TOKENS_JSON
+          # below instead (see note there).
+          HISTORYSLEEP_YT_TOKEN: ${{ secrets.HISTORYSLEEP_YT_TOKEN }}
+          TESTCHANNEL1_YT_TOKEN: ${{ secrets.TESTCHANNEL1_YT_TOKEN }}
           # Larger setup (10-20 channels): ONE secret holding every
           # channel's token as JSON -- {"channel3": "<token json>", ...} --
           # so adding a channel never means editing this YAML again. See
           # lib/config.py's channel_yt_token() for how the two are merged.
+          # Prefer this over adding more *_YT_TOKEN lines above once you
+          # have more than a couple of channels.
           YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
           # Optional cross-posting (crosspost.py) -- all three unset means
           # the feature silently no-ops. See that module's docstring before
