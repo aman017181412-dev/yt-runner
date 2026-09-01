@@ -1,7 +1,8 @@
 {
   "projects": {
     "default": "723118062589-568im7pc6s9fuvis2l77l2uei2d0n50h.apps.googleusercontent.com",
-    "automation1": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com"
+    "automation1": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
+    "automation1test": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com"
   },
   "channels": [
     {
@@ -27,6 +28,7 @@
     }
   ],
   "project_names": {
-    "automation1": "Automation1"
+    "automation1": "Automation1",
+    "automation1test": "slep"
   }
 }
