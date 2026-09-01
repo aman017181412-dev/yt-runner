@@ -17,6 +17,13 @@
       "gmail_hint": "",
       "youtube_channel_name": "",
       "project": "default"
+    },
+    {
+      "key": "historysleep",
+      "label": "Sleep stories channel",
+      "gmail_hint": "maria017181412@gmail.com",
+      "youtube_channel_name": "Drowsy Chronicles",
+      "project": "automation1"
     }
   ],
   "project_names": {
