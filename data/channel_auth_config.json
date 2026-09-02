@@ -76,6 +76,13 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Solo Stack AI",
       "project": "default"
+    },
+    {
+      "key": "businessstartupcases",
+      "label": "Startup Autopsy",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Startup Autopsy",
+      "project": "ytservice"
     }
   ],
   "project_names": {
