@@ -55,6 +55,13 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Midnight Karma",
       "project": "ytservice"
+    },
+    {
+      "key": "ancientdailylife",
+      "label": "Lived Like Ancients",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Lived Like Ancients",
+      "project": "ytservice"
     }
   ],
   "project_names": {
