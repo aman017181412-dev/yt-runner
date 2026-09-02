@@ -69,6 +69,13 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Money Moves",
       "project": "ytservice"
+    },
+    {
+      "key": "aiworkflowsolo",
+      "label": "Solo Stack AI",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Solo Stack AI",
+      "project": "default"
     }
   ],
   "project_names": {
