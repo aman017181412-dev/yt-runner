@@ -83,6 +83,13 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Startup Autopsy",
       "project": "ytservice"
+    },
+    {
+      "key": "legalconsumerrights",
+      "label": "Know Your Rights",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Know Your Rights",
+      "project": "ytservice"
     }
   ],
   "project_names": {
