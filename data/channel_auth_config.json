@@ -4,7 +4,8 @@
     "automation1": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
     "automation1test": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
     "testproj3": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
-    "ytservice": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com"
+    "ytservice": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com",
+    "testproj4": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com"
   },
   "channels": [
     {
@@ -107,7 +108,8 @@
     "automation1": "Automation1",
     "automation1test": "slep",
     "testproj3": "Test",
-    "ytservice": "yt service"
+    "ytservice": "yt service",
+    "testproj4": "Test"
   },
   "project_deleted_at": {
     "automation1test": "2026-09-03T04:08:53.921Z",
