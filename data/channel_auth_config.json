@@ -101,5 +101,8 @@
     "automation1test": "slep",
     "testproj3": "Test",
     "ytservice": "yt service"
+  },
+  "project_deleted_at": {
+    "automation1test": "2026-09-03T04:08:53.921Z"
   }
 }
