@@ -105,6 +105,13 @@
       "youtube_channel_name": "Test",
       "project": "ytservice",
       "deleted_at": "2026-09-03T04:56:27.755Z"
+    },
+    {
+      "key": "aiworkflowsolo1",
+      "label": "Solo Stack AI",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Solo Stack AI",
+      "project": "ytservice"
     }
   ],
   "project_names": {
