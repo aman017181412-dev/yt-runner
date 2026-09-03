@@ -102,7 +102,8 @@
       "label": "test",
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Test",
-      "project": "ytservice"
+      "project": "ytservice",
+      "deleted_at": "2026-09-03T04:56:27.755Z"
     }
   ],
   "project_names": {
