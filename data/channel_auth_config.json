@@ -94,6 +94,13 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Know Your Rights",
       "project": "ytservice"
+    },
+    {
+      "key": "testnow",
+      "label": "test",
+      "gmail_hint": "aman017181412@gmail.com",
+      "youtube_channel_name": "Test",
+      "project": "ytservice"
     }
   ],
   "project_names": {
