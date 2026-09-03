@@ -173,6 +173,12 @@ def main() -> int:
     for ch in config.get("channels", []):
         key = ch["key"]
 
+        # Soft-deleted from Settings (Dashboard) -- held for 7 days so it
+        # can be restored, but shouldn't nag for renewal in the meantime.
+        # See `deleted_at` in Settings' delete/restore handlers.
+        if ch.get("deleted_at"):
+            continue
+
         # Check 1: age
         last = renewed.get(key)
         if last:
