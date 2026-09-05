@@ -41,7 +41,17 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          # BUG FIX (found during audit, Problem #8): tesseract-ocr was
+          # never installed here even though config.json has
+          # asset_factory.ocr_check=True and local_checker.py's OCR
+          # watermark-detection step needs the system tesseract binary
+          # (not just the pytesseract pip wheel, which is only a wrapper
+          # around it). Missing gracefully degrades to "OCR check
+          # skipped" (see local_checker.py) rather than crashing, so this
+          # was a silent feature gap, not a visible failure -- watermarked/
+          # stock-branded stock footage frames could pass asset checks
+          # unnoticed.
+          sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
 
       - name: Install Python dependencies
         working-directory: core
