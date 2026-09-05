@@ -20,7 +20,7 @@ env:
 jobs:
   gate-and-poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 35
     steps:
       - name: Checkout private core repo
         uses: actions/checkout@v4
