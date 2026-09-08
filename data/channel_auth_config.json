@@ -6,7 +6,8 @@
     "testproj3": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
     "ytservice": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com",
     "testproj4": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com",
-    "bytun": "1068211625992-q2k2r0f0q871gq13uu10mg56qmaejige.apps.googleusercontent.com"
+    "bytun": "1068211625992-q2k2r0f0q871gq13uu10mg56qmaejige.apps.googleusercontent.com",
+    "ytcore2": "1027446792206-lpq1tcgiqf70gsred64mhveiag8miecn.apps.googleusercontent.com"
   },
   "channels": [
     {
@@ -139,7 +140,8 @@
     "testproj3": "Test",
     "ytservice": "yt service",
     "testproj4": "Test",
-    "bytun": "Bytun"
+    "bytun": "Bytun",
+    "ytcore2": "ytcore2"
   },
   "project_deleted_at": {
     "automation1test": "2026-09-03T04:08:53.921Z",
