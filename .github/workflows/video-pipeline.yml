@@ -96,6 +96,12 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # New: separate voice-cloning service (its own public repo, its
+          # own GitHub account -- see yt-voice/README.md). Only channels
+          # with "voice_provider": "f5tts_clone" in config.json actually
+          # use these; everyone else's pipeline run ignores them.
+          VOICE_SERVICE_REPO: ${{ vars.VOICE_SERVICE_REPO }}
+          VOICE_SERVICE_DISPATCH_PAT: ${{ secrets.VOICE_SERVICE_DISPATCH_PAT }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
