@@ -13,7 +13,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: video-pipeline-${{ inputs.channel }}
+  # Deliberately the SAME group for every channel (not
+  # video-pipeline-${{ inputs.channel }}) -- channels don't touch only
+  # their own files, they all git-push to the same core repo's main
+  # branch and share data/_global/*.json (script_hashes, topics_history,
+  # schedule_config). Per-channel groups let 3+ channels' "Commit results"
+  # steps race each other's push/rebase at the same instant, which burns
+  # through the 5-attempt retry below and fails the whole run over a pure
+  # scheduling collision -- not a real failure. One shared group means
+  # GitHub queues channels to run one at a time instead, so a push here
+  # never has to contend with another channel's push in flight.
+  group: video-pipeline
   cancel-in-progress: false
 
 env:
