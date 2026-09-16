@@ -12,27 +12,143 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # Deliberately the SAME group for every channel (not
-  # video-pipeline-${{ inputs.channel }}) -- channels don't touch only
-  # their own files, they all git-push to the same core repo's main
-  # branch and share data/_global/*.json (script_hashes, topics_history,
-  # schedule_config). Per-channel groups let 3+ channels' "Commit results"
-  # steps race each other's push/rebase at the same instant, which burns
-  # through the 5-attempt retry below and fails the whole run over a pure
-  # scheduling collision -- not a real failure. One shared group means
-  # GitHub queues channels to run one at a time instead, so a push here
-  # never has to contend with another channel's push in flight.
-  group: video-pipeline
-  cancel-in-progress: false
-
 env:
   PRIVATE_REPO: aman017181412-dev/yt-core
 
 jobs:
-  run-pipeline:
+  # --- prepare -----------------------------------------------------------
+  # Research -> planning -> script -> SEO -> audience profile, then fires
+  # the voice generation job WITHOUT waiting for it (run_pipeline.py
+  # --stage=prepare). Deliberately NOT in the shared "video-pipeline"
+  # concurrency group -- see that group's comment on the publish job
+  # below for why only the git-push-sensitive step actually needs it.
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      # Per-CHANNEL only, so this channel can't double-run against
+      # itself if triggered twice in quick succession -- different
+      # channels are free to prepare/voice/publish concurrently now.
+      group: video-pipeline-prepare-${{ inputs.channel }}
+      cancel-in-progress: false
+    outputs:
+      folder_path: ${{ steps.folder.outputs.path }}
+      prepared_artifact: pipeline-prepared-${{ inputs.channel }}-${{ github.run_id }}
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: core/requirements.txt
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
+
+      - name: Install Python dependencies
+        working-directory: core
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser (for optional tutorial screen recording)
+        working-directory: core
+        run: python -m playwright install --with-deps chromium
+
+      - name: Resolve pipeline folder path
+        id: folder
+        working-directory: core
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: echo "path=$(python -m scripts.print_pipeline_folder --channel "$CHANNEL")" >> "$GITHUB_OUTPUT"
+
+      - name: Run pipeline (prepare stage)
+        working-directory: core
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          # Single-key setup (unchanged): GROQ_API_KEY / OPENROUTER_API_KEY.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Multi-account key pool (llm.py): one secret per provider holding
+          # comma-separated keys from SEPARATE accounts, e.g.
+          # "key_from_acct1,key_from_acct2,...". Wins over the singular
+          # secret above if both are set. See llm.py's module docstring for
+          # why keys from the SAME account don't help (shared rate limit)
+          # and the ToS note on multiple accounts.
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          # Used both as an LLM fallback (llm.py) and for thumbnail-related
+          # Gemini calls later. Optional -- both features no-op cleanly
+          # without it.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # F5TTS voice-cloning Factory Pool (see voice_clone_client.py's
+          # module docstring). VOICE_FACTORIES_JSON is a JSON array of one
+          # or more independent yt-voice deployments to pool -- omit it
+          # and set the two below instead for a single-factory setup.
+          VOICE_FACTORIES_JSON: ${{ secrets.VOICE_FACTORIES_JSON }}
+          VOICE_SERVICE_REPO: ${{ vars.VOICE_SERVICE_REPO }}
+          VOICE_SERVICE_DISPATCH_PAT: ${{ secrets.VOICE_SERVICE_DISPATCH_PAT }}
+          YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
+        run: python -m scripts.run_pipeline --stage=prepare --channel "$CHANNEL"
+
+      - name: Upload prepared pipeline data
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-prepared-${{ inputs.channel }}-${{ github.run_id }}
+          path: core/${{ steps.folder.outputs.path }}
+          retention-days: 1
+
+  # --- voice ---------------------------------------------------------------
+  # Separate workflow file (voice-generate.yml), no shared concurrency lock
+  # -- this is the step that can sit for a long time polling the F5TTS
+  # Factory Pool, and it must not block other channels while it waits. See
+  # that file's own comment.
+  voice:
+    needs: prepare
+    uses: ./.github/workflows/voice-generate.yml
+    with:
+      channel: ${{ inputs.channel }}
+      prepared_artifact: ${{ needs.prepare.outputs.prepared_artifact }}
+      folder_path: ${{ needs.prepare.outputs.folder_path }}
+    secrets: inherit
+
+  # --- publish ---------------------------------------------------------------
+  # Footage -> thumbnail -> edit -> upload -> commit, resuming from the
+  # already-generated voice audio (run_pipeline.py --stage=publish). THIS
+  # is the only job in the shared "video-pipeline" concurrency group.
+  publish:
+    needs: voice
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    concurrency:
+      # Deliberately the SAME group for every channel (not
+      # video-pipeline-${{ inputs.channel }}) -- channels don't touch only
+      # their own files, they all git-push to the same core repo's main
+      # branch and share data/_global/*.json (script_hashes, topics_history,
+      # schedule_config). Per-channel groups let 3+ channels' "Commit results"
+      # steps race each other's push/rebase at the same instant, which burns
+      # through the 5-attempt retry below and fails the whole run over a pure
+      # scheduling collision -- not a real failure. One shared group means
+      # GitHub queues channels to run one at a time instead, so a push here
+      # never has to contend with another channel's push in flight.
+      #
+      # Only THIS job (the actual git-push-sensitive part) needs this lock
+      # now -- prepare and voice, which used to be part of the same
+      # monolithic job and held this same lock for their entire (often
+      # long, F5TTS-wait-dominated) duration, no longer do. That's the
+      # whole point of the prepare/voice/publish split: channel B's
+      # prepare+voice can run while channel A is still waiting on its own
+      # voice job, and only queues here, briefly, for the fast final step.
+      group: video-pipeline
+      cancel-in-progress: false
     steps:
       - name: Checkout private core repo
         uses: actions/checkout@v4
@@ -78,24 +194,20 @@ jobs:
         # computed name -- no per-channel edit to this file, ever.
         run: echo "CHANNEL_UPPER=$(echo "${{ inputs.channel }}" | tr '[:lower:]' '[:upper:]')" >> "$GITHUB_ENV"
 
-      - name: Run pipeline
+      - name: Download voiced pipeline data
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.voice.outputs.voiced_artifact }}
+          path: core/${{ needs.prepare.outputs.folder_path }}
+
+      - name: Run pipeline (publish stage)
         working-directory: core
         env:
           CHANNEL: ${{ inputs.channel }}
-          # Single-key setup (unchanged): GROQ_API_KEY / OPENROUTER_API_KEY.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # Multi-account key pool (llm.py): one secret per provider holding
-          # comma-separated keys from SEPARATE accounts, e.g.
-          # "key_from_acct1,key_from_acct2,...". Wins over the singular
-          # secret above if both are set. See llm.py's module docstring for
-          # why keys from the SAME account don't help (shared rate limit)
-          # and the ToS note on multiple accounts.
           GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
           OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
-          # Used both as an LLM fallback (llm.py) and for ctr_check.py's
-          # vision-based thumbnail pre-check, which is Gemini-only. Optional
-          # -- both features no-op cleanly without it.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           # Optional, free thumbnail fallback (gemini_direct_thumbnail.py /
@@ -106,12 +218,6 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # New: separate voice-cloning service (its own public repo, its
-          # own GitHub account -- see yt-voice/README.md). Only channels
-          # with "voice_provider": "f5tts_clone" in config.json actually
-          # use these; everyone else's pipeline run ignores them.
-          VOICE_SERVICE_REPO: ${{ vars.VOICE_SERVICE_REPO }}
-          VOICE_SERVICE_DISPATCH_PAT: ${{ secrets.VOICE_SERVICE_DISPATCH_PAT }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
@@ -139,7 +245,7 @@ jobs:
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           INSTAGRAM_BUSINESS_ID: ${{ secrets.INSTAGRAM_BUSINESS_ID }}
           TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
-        run: python -m scripts.run_pipeline
+        run: python -m scripts.run_pipeline --stage=publish --channel "$CHANNEL"
 
       - name: Commit results back to private repo
         working-directory: core
