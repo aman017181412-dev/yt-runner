@@ -37,8 +37,19 @@ import requests
 
 RENEW_AFTER_DAYS = 6  # send the reminder a day before Google's 7-day cutoff
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+FORCE_REASON = "forced re-authorization (scope update)"  # see FORCE_REAUTH_ALL in main()
+# Widened Sep 2026 (Tier 3, matching yt-core's youtube.py build_credentials()):
+# the full "youtube" scope, up from "youtube.upload" alone -- needed for
+# delete_video() (auto-delete on /reject) and upload_captions() (real
+# caption track). THIS is the list that actually matters for getting a
+# channel re-authorized with the broader permission: build_auth_url()
+# below puts these in the Google consent screen's authorization request,
+# so a channel only gains the new scope once it goes through that consent
+# flow again with this updated list -- editing yt-core's stored token JSON
+# by hand does NOT add a scope to an already-issued refresh token; Google
+# only grants what was actually consented to at authorization time.
 SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
@@ -168,6 +179,18 @@ def main() -> int:
     config = load_json(ROOT / "data" / "channel_auth_config.json", {"channels": []})
     renewed = load_json(ROOT / "data" / "token_renewed.json", {})
     now = datetime.now(timezone.utc)
+    # New (Sep 2026, Tier 3): the two checks below only catch a channel
+    # that's due for its normal ~6-day renewal or already broken -- a
+    # channel with a perfectly fresh, still-working token for the OLD
+    # scope would pass both and get no reminder, even right after SCOPES
+    # above changes to require something new (this exact situation: the
+    # full "youtube" scope was just added for delete_video()/
+    # upload_captions()). Set FORCE_REAUTH_ALL=1 (e.g. as a one-off
+    # workflow_dispatch input, see the workflow file) to send every
+    # active channel a reminder right now regardless of age/validity, so
+    # a scope change like this doesn't otherwise sit unapplied until each
+    # channel's token happens to naturally come up for renewal.
+    force_all = os.environ.get("FORCE_REAUTH_ALL", "").lower() in ("1", "true", "yes")
 
     due = []  # list of (channel, reason) -- reason is "" for a normal age-based reminder
     for ch in config.get("channels", []):
@@ -177,6 +200,10 @@ def main() -> int:
         # can be restored, but shouldn't nag for renewal in the meantime.
         # See `deleted_at` in Settings' delete/restore handlers.
         if ch.get("deleted_at"):
+            continue
+
+        if force_all:
+            due.append((ch, FORCE_REASON))
             continue
 
         # Check 1: age
@@ -206,10 +233,12 @@ def main() -> int:
         url = build_auth_url(ch["key"], client_id, gmail_hint)
         label = ch.get("label", ch["key"])
 
-        if reason:
-            header = f"ЁЯЪи \"{label}\" ржПрж░ token ржПржЦржиржЗ ржХрж╛ржЬ ржХрж░ржЫрзЗ ржирж╛ ({reason})ред ржПржЦржиржЗ renew ржХрж░рзБржиред"
+        if reason == FORCE_REASON:
+            header = f"🔧 \"{label}\" এর token পুরোপুরি ঠিক আছে, কিন্তু নতুন ফিচারের জন্য বাড়তি অনুমতি (scope) দরকার। একবার re-authorize করে নিন।"
+        elif reason:
+            header = f"🚨 \"{label}\" এর token এখনই কাজ করছে না ({reason})। এখনই renew করুন।"
         else:
-            header = f"ЁЯФФ \"{label}\" ржПрж░ YouTube token renew ржХрж░рж╛рж░ рж╕ржоржпрж╝ рж╣ржпрж╝рзЗржЫрзЗред"
+            header = f"🔔 \"{label}\" এর YouTube token renew করার সময় হয়েছে।"
 
         lines = [header, ""]
         if gmail_hint:

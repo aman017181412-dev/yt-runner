@@ -4,7 +4,13 @@ on:
   schedule:
     # Runs daily at 09:00 UTC (adjust to a time you're actually free to tap a link)
     - cron: "0 9 * * *"
-  workflow_dispatch: {}  # lets you trigger it manually from the Actions tab too
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: 'Send every active channel a reminder now, regardless of age/validity (for a scope change like Sep 2026''s Tier 3 update -- see send_renewal_reminders.py)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   check-and-remind:
@@ -23,6 +29,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
+          FORCE_REAUTH_ALL: ${{ inputs.force_all }}
           # One line per channel secret so the script can live-test each
           # token (see check_token_live() in send_renewal_reminders.py).
           # Add/remove lines here to match the channels you actually have
