@@ -125,7 +125,7 @@ jobs:
   # already-generated voice audio (run_pipeline.py --stage=publish). THIS
   # is the only job in the shared "video-pipeline" concurrency group.
   publish:
-    needs: voice
+    needs: [prepare, voice]
     runs-on: ubuntu-latest
     timeout-minutes: 90
     concurrency:
