@@ -198,7 +198,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.voice.outputs.voiced_artifact }}
-          path: core/${{ needs.prepare.outputs.folder_path }}
+          # BUG FIX (Sep 2026): this used to read needs.prepare.outputs.folder_path,
+          # but this job's `needs:` list includes BOTH a plain job (prepare) AND a
+          # reusable-workflow-call job (voice). GitHub Actions has a known
+          # limitation where, in that mix, the plain job's outputs resolve to
+          # null here even though prepare's own output was set correctly
+          # (confirmed via ##[debug] logs: needs.prepare.outputs.* was null in
+          # this exact step, while needs.voice.outputs.voiced_artifact resolved
+          # fine). That silently downloaded the voiced files to a bare "core/"
+          # instead of the real per-channel folder, so run_pipeline.py's
+          # --stage=publish could never find voice_checkpoint.json.
+          # Fix: read folder_path from voice's own output (piped through from
+          # its `folder_path` input in voice-generate.yml) instead -- that
+          # reference is reliable because it's a reusable-workflow output.
+          path: core/${{ needs.voice.outputs.folder_path }}
 
       - name: Run pipeline (publish stage)
         working-directory: core
