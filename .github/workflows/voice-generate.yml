@@ -24,6 +24,17 @@ on:
     outputs:
       voiced_artifact:
         value: ${{ jobs.generate.outputs.voiced_artifact }}
+      # Pass-through of the folder path we were given. Callers should read
+      # THIS instead of needs.prepare.outputs.folder_path directly -- a job
+      # that needs both a plain job (prepare) AND a reusable-workflow-call
+      # job (this one) in the same `needs:` list can get null back for the
+      # plain job's outputs (observed in practice: needs.prepare.outputs.*
+      # resolved to null in the publish job while needs.voice.outputs.*
+      # resolved fine in that same job). Re-exposing it here sidesteps that
+      # entirely since it's read from a reusable-workflow output, which is
+      # the kind of reference that's reliable.
+      folder_path:
+        value: ${{ jobs.generate.outputs.folder_path }}
 
 permissions:
   contents: read
@@ -37,6 +48,7 @@ jobs:
       cancel-in-progress: false
     outputs:
       voiced_artifact: pipeline-voiced-${{ inputs.channel }}-${{ github.run_id }}
+      folder_path: ${{ inputs.folder_path }}
     steps:
       - name: Checkout private core repo
         uses: actions/checkout@v4
