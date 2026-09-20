@@ -1,0 +1,104 @@
+name: Thumbnail Library
+
+# Manual tools for the thumbnail library (Turso metadata + Telegram storage +
+# Cloudflare Worker pool). Run "selftest" first after adding the secrets.
+#
+#   selftest               check Turso, Telegram Storage Bot (no image generated)
+#   selftest-with-workers  same, plus one small real image per Worker (uses free quota)
+#   status                 registry, library counts, video counters, worker state
+#   build                  pre-build stock:  niche + video_type + count
+#
+# Deliberately no pull_request / pull_request_target trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to run'
+        type: choice
+        default: selftest
+        options:
+          - selftest
+          - selftest-with-workers
+          - status
+          - build
+      niche:
+        description: 'build only: niche key (e.g. finance-genz) or all'
+        required: false
+        type: string
+      video_type:
+        description: 'build only'
+        type: choice
+        default: long
+        options:
+          - long
+          - short
+      count:
+        description: 'build only: images per niche (max 30)'
+        required: false
+        default: '5'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thumb-library
+  cancel-in-progress: false
+
+env:
+  PRIVATE_REPO: aman017181412-dev/yt-core
+
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (tesseract = the "no text in the image" check)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
+      # Only what the library needs -- not the pipeline's full requirements.txt
+      # (torch, chromadb, ...), so this finishes in about a minute.
+      - name: Install Python dependencies
+        run: pip install "requests>=2.31,<3" "Pillow>=10.0,<12" "numpy>=1.26,<3" "opencv-python-headless>=4.9,<5" "pytesseract>=0.3,<1"
+
+      - name: Run
+        working-directory: core
+        env:
+          ACTION: ${{ inputs.action }}
+          NICHE: ${{ inputs.niche }}
+          VIDEO_TYPE: ${{ inputs.video_type }}
+          COUNT: ${{ inputs.count }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          THUMB_STORE_BOT_TOKEN: ${{ secrets.THUMB_STORE_BOT_TOKEN }}
+          THUMB_STORE_CHAT_ID: ${{ secrets.THUMB_STORE_CHAT_ID }}
+          IMG_WORKERS_JSON: ${{ secrets.IMG_WORKERS_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          case "$ACTION" in
+            selftest)
+              python -m scripts.thumb_library.selftest --notify ;;
+            selftest-with-workers)
+              python -m scripts.thumb_library.selftest --workers --notify ;;
+            status)
+              python -m scripts.thumb_library.status ;;
+            build)
+              if [ -z "$NICHE" ]; then echo "build needs a niche (or 'all')"; exit 1; fi
+              case "$COUNT" in ''|*[!0-9]*) COUNT=5 ;; esac
+              python -m scripts.thumb_library.builder --niche "$NICHE" --video-type "$VIDEO_TYPE" --count "$COUNT" --notify ;;
+            *)
+              echo "unknown action"; exit 1 ;;
+          esac

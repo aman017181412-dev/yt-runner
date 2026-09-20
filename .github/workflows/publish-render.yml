@@ -112,6 +112,15 @@ jobs:
           # missing just skips this provider.
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          # Thumbnail Library (scripts/thumb_library/): Turso metadata +
+          # Telegram Storage Bot + the Cloudflare Worker pool. Only used when
+          # config.json -> "thumbnail_source" is "library"; if any of these
+          # are missing the library step just falls through to gemini_direct.
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          THUMB_STORE_BOT_TOKEN: ${{ secrets.THUMB_STORE_BOT_TOKEN }}
+          THUMB_STORE_CHAT_ID: ${{ secrets.THUMB_STORE_CHAT_ID }}
+          IMG_WORKERS_JSON: ${{ secrets.IMG_WORKERS_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
