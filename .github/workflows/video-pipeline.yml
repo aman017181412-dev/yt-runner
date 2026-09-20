@@ -12,16 +12,13 @@ on:
 permissions:
   contents: read
 
-env:
-  PRIVATE_REPO: aman017181412-dev/yt-core
-
 jobs:
   # --- prepare -----------------------------------------------------------
   # Research -> planning -> script -> SEO -> audience profile, then fires
   # the voice generation job WITHOUT waiting for it (run_pipeline.py
   # --stage=prepare). Deliberately NOT in the shared "video-pipeline"
-  # concurrency group -- see that group's comment on the publish job
-  # below for why only the git-push-sensitive step actually needs it.
+  # concurrency group -- see publish-commit.yml's header comment for why
+  # only the git-push-sensitive step actually needs it.
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -120,163 +117,36 @@ jobs:
       folder_path: ${{ needs.prepare.outputs.folder_path }}
     secrets: inherit
 
-  # --- publish ---------------------------------------------------------------
-  # Footage -> thumbnail -> edit -> upload -> commit, resuming from the
-  # already-generated voice audio (run_pipeline.py --stage=publish). THIS
-  # is the only job in the shared "video-pipeline" concurrency group.
-  publish:
+  # --- publish-render --------------------------------------------------------
+  # Footage -> thumbnail -> edit -> upload, resuming from the already-
+  # generated voice audio (run_pipeline.py --stage=publish), then a LOCAL
+  # git commit exported as a patch. Separate workflow file
+  # (publish-render.yml), per-CHANNEL concurrency group only -- see that
+  # file's header comment. This replaces the old monolithic "publish" job
+  # that held the shared "video-pipeline" lock for its entire (often very
+  # long) duration; now only publish-commit below does, and only briefly.
+  publish-render:
     needs: [prepare, voice]
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    concurrency:
-      # Deliberately the SAME group for every channel (not
-      # video-pipeline-${{ inputs.channel }}) -- channels don't touch only
-      # their own files, they all git-push to the same core repo's main
-      # branch and share data/_global/*.json (script_hashes, topics_history,
-      # schedule_config). Per-channel groups let 3+ channels' "Commit results"
-      # steps race each other's push/rebase at the same instant, which burns
-      # through the 5-attempt retry below and fails the whole run over a pure
-      # scheduling collision -- not a real failure. One shared group means
-      # GitHub queues channels to run one at a time instead, so a push here
-      # never has to contend with another channel's push in flight.
-      #
-      # Only THIS job (the actual git-push-sensitive part) needs this lock
-      # now -- prepare and voice, which used to be part of the same
-      # monolithic job and held this same lock for their entire (often
-      # long, F5TTS-wait-dominated) duration, no longer do. That's the
-      # whole point of the prepare/voice/publish split: channel B's
-      # prepare+voice can run while channel A is still waiting on its own
-      # voice job, and only queues here, briefly, for the fast final step.
-      group: video-pipeline
-      cancel-in-progress: false
-    steps:
-      - name: Checkout private core repo
-        uses: actions/checkout@v4
-        with:
-          repository: aman017181412-dev/yt-core
-          token: ${{ secrets.PRIVATE_REPO_PAT }}
-          path: core
-          fetch-depth: 1
+    uses: ./.github/workflows/publish-render.yml
+    with:
+      channel: ${{ inputs.channel }}
+      voiced_artifact: ${{ needs.voice.outputs.voiced_artifact }}
+      # Read from voice's output, NOT needs.prepare.outputs.folder_path --
+      # see voice-generate.yml's own comment on the same null-outputs
+      # quirk (mixing a plain job and a reusable-workflow-call job in one
+      # `needs:` list can resolve the plain job's outputs to null here).
+      folder_path: ${{ needs.voice.outputs.folder_path }}
+    secrets: inherit
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: core/requirements.txt
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # BUG FIX (found during audit, Problem #8): tesseract-ocr was
-          # never installed here even though config.json has
-          # asset_factory.ocr_check=True and local_checker.py's OCR
-          # watermark-detection step needs the system tesseract binary
-          # (not just the pytesseract pip wheel, which is only a wrapper
-          # around it). Missing gracefully degrades to "OCR check
-          # skipped" (see local_checker.py) rather than crashing, so this
-          # was a silent feature gap, not a visible failure -- watermarked/
-          # stock-branded stock footage frames could pass asset checks
-          # unnoticed.
-          sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
-
-      - name: Install Python dependencies
-        working-directory: core
-        run: pip install -r requirements.txt
-
-      - name: Install Playwright browser (for optional tutorial screen recording)
-        working-directory: core
-        run: python -m playwright install --with-deps chromium
-
-      - name: Resolve channel token secret name
-        # GitHub secret names are stored uppercase regardless of case used
-        # to create them; this uppercases inputs.channel once so the next
-        # step can look up that channel's own <KEY>_YT_TOKEN secret by a
-        # computed name -- no per-channel edit to this file, ever.
-        run: echo "CHANNEL_UPPER=$(echo "${{ inputs.channel }}" | tr '[:lower:]' '[:upper:]')" >> "$GITHUB_ENV"
-
-      - name: Download voiced pipeline data
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.voice.outputs.voiced_artifact }}
-          # BUG FIX (Sep 2026): this used to read needs.prepare.outputs.folder_path,
-          # but this job's `needs:` list includes BOTH a plain job (prepare) AND a
-          # reusable-workflow-call job (voice). GitHub Actions has a known
-          # limitation where, in that mix, the plain job's outputs resolve to
-          # null here even though prepare's own output was set correctly
-          # (confirmed via ##[debug] logs: needs.prepare.outputs.* was null in
-          # this exact step, while needs.voice.outputs.voiced_artifact resolved
-          # fine). That silently downloaded the voiced files to a bare "core/"
-          # instead of the real per-channel folder, so run_pipeline.py's
-          # --stage=publish could never find voice_checkpoint.json.
-          # Fix: read folder_path from voice's own output (piped through from
-          # its `folder_path` input in voice-generate.yml) instead -- that
-          # reference is reliable because it's a reusable-workflow output.
-          path: core/${{ needs.voice.outputs.folder_path }}
-
-      - name: Run pipeline (publish stage)
-        working-directory: core
-        env:
-          CHANNEL: ${{ inputs.channel }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
-          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
-          # Optional, free thumbnail fallback (gemini_direct_thumbnail.py /
-          # asset_factory.py): Cloudflare Workers AI flux-1-schnell, tried
-          # right after Gemini. Both values required together; either
-          # missing just skips this provider.
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
-          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
-          # Small setup (1-2 channels): one secret per channel, unchanged.
-          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
-          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
-          # Any channel added via the Dashboard (or connected fresh through
-          # the token-renewer) gets its own <KEY>_YT_TOKEN secret created
-          # automatically by oauth-callback.js -- this line looks that
-          # secret up by the name computed in "Resolve channel token secret
-          # name" above and exposes it under one fixed name, so
-          # lib/config.py's channel_yt_token() finds it without this file
-          # ever needing a new line for it.
-          YT_TOKEN_FOR_CURRENT_CHANNEL: ${{ secrets[format('{0}_YT_TOKEN', env.CHANNEL_UPPER)] }}
-          # Larger setup (10-20 channels): ONE secret holding every
-          # channel's token as JSON -- {"channel3": "<token json>", ...} --
-          # so adding a channel never means editing this YAML again. See
-          # lib/config.py's channel_yt_token() for how the two are merged.
-          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
-          # Optional cross-posting (crosspost.py) -- all three unset means
-          # the feature silently no-ops. See that module's docstring before
-          # setting these up; it's the most involved feature to enable.
-          CROSSPOST_UPLOAD_WEBHOOK: ${{ secrets.CROSSPOST_UPLOAD_WEBHOOK }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          INSTAGRAM_BUSINESS_ID: ${{ secrets.INSTAGRAM_BUSINESS_ID }}
-          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
-        run: python -m scripts.run_pipeline --stage=publish --channel "$CHANNEL"
-
-      - name: Commit results back to private repo
-        working-directory: core
-        env:
-          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
-          CHANNEL: ${{ inputs.channel }}
-          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
-        run: |
-          git config user.name "yt-bot"
-          git config user.email "bot@users.noreply.github.com"
-          git add data/
-          git commit -m "auto: ${CHANNEL} pipeline run $(date -u +%F-%H%M)" || echo "No data changes"
-          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
-          for i in 1 2 3 4 5; do
-            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && { echo "push succeeded"; exit 0; }
-            echo "Push conflict (attempt $i/5); retrying..."
-            git rebase --abort 2>/dev/null || true
-            sleep $((RANDOM % 10 + 5))
-          done
-          echo "Unable to push after 5 attempts" >&2
-          exit 1
+  # --- publish-commit ----------------------------------------------------
+  # Applies + pushes the patch publish-render produced. Separate workflow
+  # file (publish-commit.yml), THE ONLY job left in the shared
+  # "video-pipeline" concurrency group -- see that file's header comment.
+  publish-commit:
+    needs: publish-render
+    uses: ./.github/workflows/publish-commit.yml
+    with:
+      channel: ${{ inputs.channel }}
+      patch_artifact: ${{ needs.publish-render.outputs.patch_artifact }}
+      changed: ${{ needs.publish-render.outputs.changed }}
+    secrets: inherit

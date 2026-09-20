@@ -1,0 +1,85 @@
+name: Publish Commit (reusable)
+
+# Called from video-pipeline.yml's "publish-commit" job, NOT triggered
+# directly. The ONLY job left in the shared "video-pipeline" concurrency
+# group (see publish-render.yml's header comment for the full reasoning
+# behind splitting the old monolithic "publish" job in two). All it does
+# is take the patch publish-render.yml already produced (a plain local
+# commit, exported with `git format-patch`) and apply + push it against
+# whatever main's tip actually is by the time this job's turn in the
+# queue comes up -- so it stays correct even if another channel's commit,
+# or an out-of-band write (e.g. the Telegram approval webhook, which can
+# touch data/schedule_config.json outside any Actions run entirely),
+# landed on main in the meantime.
+on:
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+      patch_artifact:
+        required: true
+        type: string
+      changed:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  commit:
+    if: inputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      # Deliberately the SAME group for every channel -- see
+      # publish-render.yml's header comment. This is now the only job
+      # that needs it, and it only occupies the lock for as long as an
+      # apply+push actually takes (seconds to low minutes), not for the
+      # whole footage/edit/upload duration like the old monolithic
+      # "publish" job did.
+      group: video-pipeline
+      cancel-in-progress: false
+    steps:
+      - name: Download patch artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.patch_artifact }}
+          path: patch
+
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          # Full history (not the usual fetch-depth: 1) so `git am --3way`
+          # below can always find the common-ancestor blobs it needs to
+          # three-way-merge this patch, even if main has moved on since
+          # publish-render.yml made its commit.
+          fetch-depth: 0
+
+      - name: Apply and push (retry on conflict/race)
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          PRIVATE_REPO: aman017181412-dev/yt-core
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          PATCH_FILE="$GITHUB_WORKSPACE/patch/publish.patch"
+          for i in 1 2 3 4 5; do
+            git fetch "$REMOTE" main
+            git checkout -B main FETCH_HEAD
+            if git am --3way "$PATCH_FILE" && git push "$REMOTE" HEAD:main; then
+              echo "push succeeded"
+              exit 0
+            fi
+            echo "Apply/push conflict (attempt $i/5); retrying..."
+            git am --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to apply/push after 5 attempts" >&2
+          exit 1

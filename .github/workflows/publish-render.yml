@@ -1,0 +1,178 @@
+name: Publish Render (reusable)
+
+# Called from video-pipeline.yml's "publish-render" job, NOT triggered
+# directly. Split out of the old monolithic "publish" job (Sep 2026 audit,
+# to let 10-15 channels' publish stages actually run in parallel) so the
+# heavy, channel-isolated work here (footage -> thumbnail -> edit ->
+# YouTube upload) can run fully in parallel across channels instead of
+# queuing behind the single shared "video-pipeline" git-push lock. This
+# job does its own LOCAL git commit at the end (no push, no network) and
+# hands the resulting diff off as a small patch artifact -- see
+# publish-commit.yml, which is the only job left holding that shared lock,
+# and only for the few seconds/minutes an apply+push actually takes.
+on:
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+      voiced_artifact:
+        required: true
+        type: string
+      folder_path:
+        required: true
+        type: string
+    outputs:
+      patch_artifact:
+        value: ${{ jobs.render.outputs.patch_artifact }}
+      changed:
+        value: ${{ jobs.render.outputs.changed }}
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      # Per-CHANNEL only -- this is the heavy footage/edit/upload work,
+      # which doesn't touch shared git state, so different channels are
+      # free to run this at the same time. Only the SAME channel can't
+      # overlap with itself if triggered twice in quick succession.
+      group: video-pipeline-publish-${{ inputs.channel }}
+      cancel-in-progress: false
+    outputs:
+      patch_artifact: publish-patch-${{ inputs.channel }}-${{ github.run_id }}
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: core/requirements.txt
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # BUG FIX (found during audit, Problem #8): tesseract-ocr was
+          # never installed here even though config.json has
+          # asset_factory.ocr_check=True and local_checker.py's OCR
+          # watermark-detection step needs the system tesseract binary
+          # (not just the pytesseract pip wheel, which is only a wrapper
+          # around it). Missing gracefully degrades to "OCR check
+          # skipped" (see local_checker.py) rather than crashing, so this
+          # was a silent feature gap, not a visible failure -- watermarked/
+          # stock-branded stock footage frames could pass asset checks
+          # unnoticed.
+          sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
+
+      - name: Install Python dependencies
+        working-directory: core
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser (for optional tutorial screen recording)
+        working-directory: core
+        run: python -m playwright install --with-deps chromium
+
+      - name: Resolve channel token secret name
+        # GitHub secret names are stored uppercase regardless of case used
+        # to create them; this uppercases inputs.channel once so the next
+        # step can look up that channel's own <KEY>_YT_TOKEN secret by a
+        # computed name -- no per-channel edit to this file, ever.
+        run: echo "CHANNEL_UPPER=$(echo "${{ inputs.channel }}" | tr '[:lower:]' '[:upper:]')" >> "$GITHUB_ENV"
+
+      - name: Download voiced pipeline data
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.voiced_artifact }}
+          path: core/${{ inputs.folder_path }}
+
+      - name: Run pipeline (publish stage)
+        working-directory: core
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          # Optional, free thumbnail fallback (gemini_direct_thumbnail.py /
+          # asset_factory.py): Cloudflare Workers AI flux-1-schnell, tried
+          # right after Gemini. Both values required together; either
+          # missing just skips this provider.
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          # Small setup (1-2 channels): one secret per channel, unchanged.
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          # Any channel added via the Dashboard (or connected fresh through
+          # the token-renewer) gets its own <KEY>_YT_TOKEN secret created
+          # automatically by oauth-callback.js -- this line looks that
+          # secret up by the name computed in "Resolve channel token secret
+          # name" above and exposes it under one fixed name, so
+          # lib/config.py's channel_yt_token() finds it without this file
+          # ever needing a new line for it.
+          YT_TOKEN_FOR_CURRENT_CHANNEL: ${{ secrets[format('{0}_YT_TOKEN', env.CHANNEL_UPPER)] }}
+          # Larger setup (10-20 channels): ONE secret holding every
+          # channel's token as JSON -- {"channel3": "<token json>", ...} --
+          # so adding a channel never means editing this YAML again. See
+          # lib/config.py's channel_yt_token() for how the two are merged.
+          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
+          # Optional cross-posting (crosspost.py) -- all three unset means
+          # the feature silently no-ops. See that module's docstring before
+          # setting these up; it's the most involved feature to enable.
+          CROSSPOST_UPLOAD_WEBHOOK: ${{ secrets.CROSSPOST_UPLOAD_WEBHOOK }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ID: ${{ secrets.INSTAGRAM_BUSINESS_ID }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+        run: python -m scripts.run_pipeline --stage=publish --channel "$CHANNEL"
+
+      - name: Commit results locally (no push)
+        # Deliberately NOT pushed from here -- see publish-commit.yml. This
+        # only stages+commits into this job's own throwaway local clone so
+        # the next step can export the diff as a patch. If there's nothing
+        # to commit (e.g. a run that errored before writing anything),
+        # changed=false skips both the patch export and the entire
+        # publish-commit job downstream, instead of queuing a no-op.
+        id: commit
+        working-directory: core
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "auto: ${{ inputs.channel }} pipeline run $(date -u +%F-%H%M)"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Export commit as a patch
+        if: steps.commit.outputs.changed == 'true'
+        working-directory: core
+        run: git format-patch -1 HEAD --stdout > "$GITHUB_WORKSPACE/publish.patch"
+
+      - name: Upload patch artifact
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-patch-${{ inputs.channel }}-${{ github.run_id }}
+          path: publish.patch
+          retention-days: 1
