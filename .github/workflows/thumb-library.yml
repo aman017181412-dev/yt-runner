@@ -7,9 +7,19 @@ name: Thumbnail Library
 #   selftest-with-workers  same, plus one small real image per Worker (uses free quota)
 #   status                 registry, library counts, video counters, worker state
 #   build                  pre-build stock:  niche + video_type + count
+#   auto                   top up never-used stock for every active niche (what the schedule runs)
+#   retire-legacy          stop using thumbnails made before the richer metadata (niche or all)
+#
+# SCHEDULE: runs "auto" every day at 00:30 UTC (06:30 Bangladesh time) -- right
+# after the free Workers AI quota resets -- but ONLY when the repository
+# variable THUMB_AUTO_BUILD is set to "true" (Settings -> Secrets and variables
+# -> Actions -> Variables). Until you create that variable the schedule does
+# nothing, so you decide when automatic quota use starts.
 #
 # Deliberately no pull_request / pull_request_target trigger.
 on:
+  schedule:
+    - cron: '30 0 * * *'
   workflow_dispatch:
     inputs:
       action:
@@ -21,8 +31,10 @@ on:
           - selftest-with-workers
           - status
           - build
+          - auto
+          - retire-legacy
       niche:
-        description: 'build only: niche key (e.g. finance-genz) or all'
+        description: 'build / retire-legacy: niche key (e.g. finance-genz) or all'
         required: false
         type: string
       video_type:
@@ -50,6 +62,8 @@ env:
 
 jobs:
   library:
+    # manual runs always go; scheduled runs only when THUMB_AUTO_BUILD == 'true'
+    if: github.event_name != 'schedule' || vars.THUMB_AUTO_BUILD == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -76,7 +90,7 @@ jobs:
       - name: Run
         working-directory: core
         env:
-          ACTION: ${{ inputs.action }}
+          ACTION: ${{ github.event_name == 'schedule' && 'auto' || inputs.action }}
           NICHE: ${{ inputs.niche }}
           VIDEO_TYPE: ${{ inputs.video_type }}
           COUNT: ${{ inputs.count }}
@@ -95,6 +109,11 @@ jobs:
               python -m scripts.thumb_library.selftest --workers --notify ;;
             status)
               python -m scripts.thumb_library.status ;;
+            auto)
+              python -m scripts.thumb_library.builder --auto --notify ;;
+            retire-legacy)
+              if [ -z "$NICHE" ]; then echo "retire-legacy needs a niche (or 'all')"; exit 1; fi
+              python -m scripts.thumb_library.admin retire-legacy --niche "$NICHE" ;;
             build)
               if [ -z "$NICHE" ]; then echo "build needs a niche (or 'all')"; exit 1; fi
               case "$COUNT" in ''|*[!0-9]*) COUNT=5 ;; esac
