@@ -2,60 +2,17 @@
   "projects": {
     "default": "723118062589-568im7pc6s9fuvis2l77l2uei2d0n50h.apps.googleusercontent.com",
     "automation1": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
-    "automation1test": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
-    "testproj3": "677839504257-n47eilr4otitbuhp1rmmj0j2cpopc679.apps.googleusercontent.com",
     "ytservice": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com",
-    "testproj4": "1060151546704-cga6qsmondj2r0ou3gikjfo37lq4cs43.apps.googleusercontent.com",
     "bytun": "1068211625992-q2k2r0f0q871gq13uu10mg56qmaejige.apps.googleusercontent.com",
     "ytcore2": "1027446792206-lpq1tcgiqf70gsred64mhveiag8miecn.apps.googleusercontent.com"
   },
   "channels": [
-    {
-      "key": "channel1",
-      "label": "আপনার চ্যানেলের নাম",
-      "gmail_hint": "mariaahmed6578@gmail.com",
-      "youtube_channel_name": "YouTube-এ ঠিক যেভাবে চ্যানেলের নাম দেখায়",
-      "project": "default",
-      "deleted_at": "2026-09-03T04:55:56.743Z"
-    },
-    {
-      "key": "channel2",
-      "label": "",
-      "gmail_hint": "",
-      "youtube_channel_name": "",
-      "project": "default",
-      "deleted_at": "2026-09-03T04:07:26.244Z"
-    },
     {
       "key": "historysleep",
       "label": "Sleep stories channel",
       "gmail_hint": "maria017181412@gmail.com",
       "youtube_channel_name": "Drowsy Chronicles",
       "project": "automation1"
-    },
-    {
-      "key": "slep",
-      "label": "slep",
-      "gmail_hint": "maria017181412@gmail.com",
-      "youtube_channel_name": "",
-      "project": "default",
-      "deleted_at": "2026-09-03T04:08:08.795Z"
-    },
-    {
-      "key": "hhhh",
-      "label": "Jxjx",
-      "gmail_hint": "maria017181412@gmail.com",
-      "youtube_channel_name": "Djdj",
-      "project": "automation1test",
-      "deleted_at": "2026-09-03T04:08:17.379Z"
-    },
-    {
-      "key": "testchannel1",
-      "label": "রবদবববzmkkddk",
-      "gmail_hint": "maria017181412@gmail.com",
-      "youtube_channel_name": "Jskssjdjdjdksks",
-      "project": "testproj3",
-      "deleted_at": "2026-09-03T04:08:27.326Z"
     },
     {
       "key": "midnightkarma",
@@ -91,30 +48,6 @@
       "gmail_hint": "aman017181412@gmail.com",
       "youtube_channel_name": "Startup Autopsy",
       "project": "ytcore2"
-    },
-    {
-      "key": "legalconsumerrights",
-      "label": "Know Your Rights",
-      "gmail_hint": "aman017181412@gmail.com",
-      "youtube_channel_name": "Know Your Rights",
-      "project": "ytservice",
-      "deleted_at": "2026-09-03T07:25:29.064Z"
-    },
-    {
-      "key": "testnow",
-      "label": "test",
-      "gmail_hint": "aman017181412@gmail.com",
-      "youtube_channel_name": "Test",
-      "project": "ytservice",
-      "deleted_at": "2026-09-03T04:56:27.755Z"
-    },
-    {
-      "key": "aiworkflowsolo1",
-      "label": "Solo Stack AI",
-      "gmail_hint": "aman017181412@gmail.com",
-      "youtube_channel_name": "Solo Stack AI",
-      "project": "ytservice",
-      "deleted_at": "2026-09-03T07:25:16.971Z"
     },
     {
       "key": "financegenz1",
@@ -154,16 +87,9 @@
   ],
   "project_names": {
     "automation1": "Automation1",
-    "automation1test": "slep",
-    "testproj3": "Test",
     "ytservice": "yt service",
-    "testproj4": "Test",
     "bytun": "Bytun",
     "ytcore2": "ytcore2"
   },
-  "project_deleted_at": {
-    "automation1test": "2026-09-03T04:08:53.921Z",
-    "testproj3": "2026-09-03T04:09:07.896Z",
-    "testproj4": "2026-09-03T04:56:40.389Z"
-  }
+  "project_deleted_at": {}
 }
