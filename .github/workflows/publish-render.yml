@@ -121,6 +121,17 @@ jobs:
           THUMB_STORE_BOT_TOKEN: ${{ secrets.THUMB_STORE_BOT_TOKEN }}
           THUMB_STORE_CHAT_ID: ${{ secrets.THUMB_STORE_CHAT_ID }}
           IMG_WORKERS_JSON: ${{ secrets.IMG_WORKERS_JSON }}
+          # Dashboard-managed image workers: slot N's API key is the secret IMG_WORKER_KEY_W<N>
+          IMG_WORKER_KEY_W1: ${{ secrets.IMG_WORKER_KEY_W1 }}
+          IMG_WORKER_KEY_W2: ${{ secrets.IMG_WORKER_KEY_W2 }}
+          IMG_WORKER_KEY_W3: ${{ secrets.IMG_WORKER_KEY_W3 }}
+          IMG_WORKER_KEY_W4: ${{ secrets.IMG_WORKER_KEY_W4 }}
+          IMG_WORKER_KEY_W5: ${{ secrets.IMG_WORKER_KEY_W5 }}
+          IMG_WORKER_KEY_W6: ${{ secrets.IMG_WORKER_KEY_W6 }}
+          IMG_WORKER_KEY_W7: ${{ secrets.IMG_WORKER_KEY_W7 }}
+          IMG_WORKER_KEY_W8: ${{ secrets.IMG_WORKER_KEY_W8 }}
+          IMG_WORKER_KEY_W9: ${{ secrets.IMG_WORKER_KEY_W9 }}
+          IMG_WORKER_KEY_W10: ${{ secrets.IMG_WORKER_KEY_W10 }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
