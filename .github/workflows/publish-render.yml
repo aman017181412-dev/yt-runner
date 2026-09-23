@@ -27,6 +27,10 @@ on:
         value: ${{ jobs.render.outputs.patch_artifact }}
       changed:
         value: ${{ jobs.render.outputs.changed }}
+      hashes_artifact:
+        value: ${{ jobs.render.outputs.hashes_artifact }}
+      hashes_changed:
+        value: ${{ jobs.render.outputs.hashes_changed }}
 
 permissions:
   contents: read
@@ -45,6 +49,15 @@ jobs:
     outputs:
       patch_artifact: publish-patch-${{ inputs.channel }}-${{ github.run_id }}
       changed: ${{ steps.commit.outputs.changed }}
+      # Sep 2026 fix: script_archive.record_global()'s new-hash entry no
+      # longer travels inside the data/ patch above -- see that function's
+      # docstring for why (it used to be the exact thing that made the
+      # "Apply and push" step in publish-commit.yml conflict, every time
+      # two channels' patches landed close together). It goes out as its
+      # own tiny artifact instead, for publish-commit.yml's separate
+      # fresh-fetch-and-append step to pick up.
+      hashes_artifact: new-hashes-${{ inputs.channel }}-${{ github.run_id }}
+      hashes_changed: ${{ steps.hashes.outputs.changed }}
     steps:
       - name: Checkout private core repo
         uses: actions/checkout@v4
@@ -170,6 +183,13 @@ jobs:
         # to commit (e.g. a run that errored before writing anything),
         # changed=false skips both the patch export and the entire
         # publish-commit job downstream, instead of queuing a no-op.
+        #
+        # Sep 2026 fix: `git add data/` no longer picks up any script-hash
+        # registry change -- record_global() now writes that to
+        # new_hashes.json at the repo root (core/new_hashes.json), OUTSIDE
+        # data/ entirely, specifically so it never rides along in this
+        # commit/patch. See the "Check for new script-hash entries" step
+        # below and script_archive.record_global()'s docstring.
         id: commit
         working-directory: core
         run: |
@@ -195,4 +215,27 @@ jobs:
         with:
           name: publish-patch-${{ inputs.channel }}-${{ github.run_id }}
           path: publish.patch
+          retention-days: 1
+
+      - name: Check for new script-hash entries
+        # new_hashes.json only exists if run_pipeline.py's publish stage
+        # actually reached script_archive.record_global() -- i.e. upload()
+        # succeeded (see that function's docstring). A held/rejected/
+        # errored-before-upload run has nothing here, same "changed=false,
+        # skip downstream" shape as the commit step above.
+        id: hashes
+        working-directory: core
+        run: |
+          if [ -s new_hashes.json ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload new hashes artifact
+        if: steps.hashes.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-hashes-${{ inputs.channel }}-${{ github.run_id }}
+          path: core/new_hashes.json
           retention-days: 1

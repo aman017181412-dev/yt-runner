@@ -139,9 +139,11 @@ jobs:
     secrets: inherit
 
   # --- publish-commit ----------------------------------------------------
-  # Applies + pushes the patch publish-render produced. Separate workflow
-  # file (publish-commit.yml), THE ONLY job left in the shared
-  # "video-pipeline" concurrency group -- see that file's header comment.
+  # Applies + pushes the patch publish-render produced, AND (Sep 2026 fix)
+  # separately folds in this run's script-hash registry entry, if any.
+  # Separate workflow file (publish-commit.yml), THE ONLY job left in the
+  # shared "video-pipeline" concurrency group -- see that file's header
+  # comment for both parts.
   publish-commit:
     needs: publish-render
     uses: ./.github/workflows/publish-commit.yml
@@ -149,4 +151,10 @@ jobs:
       channel: ${{ inputs.channel }}
       patch_artifact: ${{ needs.publish-render.outputs.patch_artifact }}
       changed: ${{ needs.publish-render.outputs.changed }}
+      # Sep 2026 fix -- see publish-commit.yml's header comment: the
+      # script-hash registry entry now travels as its own artifact,
+      # separate from the data/ patch above, and gets folded in by its
+      # own fresh-fetch step instead of git-am.
+      hashes_artifact: ${{ needs.publish-render.outputs.hashes_artifact }}
+      hashes_changed: ${{ needs.publish-render.outputs.hashes_changed }}
     secrets: inherit

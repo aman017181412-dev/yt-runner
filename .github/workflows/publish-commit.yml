@@ -3,14 +3,41 @@ name: Publish Commit (reusable)
 # Called from video-pipeline.yml's "publish-commit" job, NOT triggered
 # directly. The ONLY job left in the shared "video-pipeline" concurrency
 # group (see publish-render.yml's header comment for the full reasoning
-# behind splitting the old monolithic "publish" job in two). All it does
-# is take the patch publish-render.yml already produced (a plain local
-# commit, exported with `git format-patch`) and apply + push it against
-# whatever main's tip actually is by the time this job's turn in the
-# queue comes up -- so it stays correct even if another channel's commit,
-# or an out-of-band write (e.g. the Telegram approval webhook, which can
-# touch data/schedule_config.json outside any Actions run entirely),
-# landed on main in the meantime.
+# behind splitting the old monolithic "publish" job in two). Two
+# independent things happen here, in two separate steps, because they now
+# use two different reconciliation strategies:
+#
+#   1. "Apply and push" -- takes the patch publish-render.yml produced (a
+#      plain local commit, exported with `git format-patch`, covering
+#      everything under data/ EXCEPT the script-hash registry -- see #2)
+#      and applies + pushes it against whatever main's tip actually is by
+#      the time this job's turn in the queue comes up -- so it stays
+#      correct even if another channel's commit, or an out-of-band write
+#      (e.g. the Telegram approval webhook, which can touch
+#      data/schedule_config.json outside any Actions run entirely), landed
+#      on main in the meantime.
+#
+#   2. "Fold in script-hash update" -- Sep 2026 fix. The registry used to
+#      be ONE shared data/_global/script_hashes.json file, folded in by
+#      step 1 above along with everything else -- which meant any two
+#      channels' patches landing close together both tried to append to
+#      that same file's tail, and git am --3way simply cannot reconcile
+#      two independent appends to the same lines. That produced a real,
+#      reproducible "CONFLICT (content): Merge conflict in
+#      data/_global/script_hashes.json" on every one of that job's 5
+#      retries -- not a transient race the retry loop could fix, since
+#      this job's own concurrency group means nothing else can push while
+#      it holds the lock, so every retry just re-fetched the SAME main tip
+#      and replayed the SAME stale patch into the SAME conflict. The
+#      registry is now one file per channel (removes cross-channel
+#      conflicts entirely -- disjoint files never conflict) AND folded in
+#      here via a fresh fetch + plain read-modify-write + its own retry
+#      loop, rather than a canned patch -- so even a same-channel race
+#      (two overlapping runs for one channel) resolves by actually
+#      re-reading the current state on retry, instead of failing
+#      identically every time. See script_archive.record_global(),
+#      script_archive.apply_pending_hashes() and
+#      scripts/finalize_script_hashes.py for the rest of this design.
 on:
   workflow_call:
     inputs:
@@ -23,13 +50,23 @@ on:
       changed:
         required: true
         type: string
+      hashes_artifact:
+        required: true
+        type: string
+      hashes_changed:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   commit:
-    if: inputs.changed == 'true'
+    # Either half of this job can have real work to do independently of
+    # the other now (a run could in principle produce a data/ change with
+    # no new upload, or vice versa), so this no longer gates on `changed`
+    # alone.
+    if: inputs.changed == 'true' || inputs.hashes_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -43,10 +80,18 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Download patch artifact
+        if: inputs.changed == 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.patch_artifact }}
           path: patch
+
+      - name: Download new hashes artifact
+        if: inputs.hashes_changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.hashes_artifact }}
+          path: hashes
 
       - name: Checkout private core repo
         uses: actions/checkout@v4
@@ -60,7 +105,13 @@ jobs:
           # publish-render.yml made its commit.
           fetch-depth: 0
 
+      - uses: actions/setup-python@v5
+        if: inputs.hashes_changed == 'true'
+        with:
+          python-version: '3.11'
+
       - name: Apply and push (retry on conflict/race)
+        if: inputs.changed == 'true'
         working-directory: core
         env:
           PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
@@ -82,4 +133,36 @@ jobs:
             sleep $((RANDOM % 10 + 5))
           done
           echo "Unable to apply/push after 5 attempts" >&2
+          exit 1
+
+      - name: Fold in script-hash update (fresh-fetch retry)
+        if: inputs.hashes_changed == 'true'
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          PRIVATE_REPO: aman017181412-dev/yt-core
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          PENDING_FILE="$GITHUB_WORKSPACE/hashes/new_hashes.json"
+          for i in 1 2 3 4 5; do
+            git fetch "$REMOTE" main
+            git checkout -B main FETCH_HEAD
+            python -m scripts.finalize_script_hashes --channel "$CHANNEL" --pending "$PENDING_FILE"
+            git add "data/_global/script_hashes/"
+            if git diff --cached --quiet; then
+              echo "Hash entry already on main (folded in on an earlier attempt) -- nothing to push"
+              exit 0
+            fi
+            git commit -m "auto: ${{ inputs.channel }} script-hash update $(date -u +%F-%H%M)"
+            if git push "$REMOTE" HEAD:main; then
+              echo "push succeeded"
+              exit 0
+            fi
+            echo "Hash push race (attempt $i/5); retrying..."
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to push script-hash update after 5 attempts" >&2
           exit 1
