@@ -42,7 +42,15 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Sep 2026, Dynamic Parallel Factory Allocation: this job may now poll
+    # not just for its OWN F5TTS pieces to finish, but for a busy factory
+    # to free up when every factory in the pool is currently owned by
+    # OTHER channels -- deliberately with no timeout on that wait (see
+    # voice_clone_client.py's module docstring). Bumped from 60 so a
+    # channel isn't killed mid-wait by GitHub's own job ceiling; raise
+    # further (max 360 on GitHub-hosted runners) if this pool regularly
+    # has more concurrent channels than factories.
+    timeout-minutes: 180
     concurrency:
       group: voice-generate-${{ inputs.channel }}
       cancel-in-progress: false
@@ -88,6 +96,16 @@ jobs:
           VOICE_FACTORIES_JSON: ${{ secrets.VOICE_FACTORIES_JSON }}
           VOICE_SERVICE_REPO: ${{ vars.VOICE_SERVICE_REPO }}
           VOICE_SERVICE_DISPATCH_PAT: ${{ secrets.VOICE_SERVICE_DISPATCH_PAT }}
+          # Sep 2026, Dynamic Parallel Factory Allocation: lib/factory_ledger.py
+          # reads/writes data/voice_factory_state.json in THIS repo directly
+          # over the Contents API (not the local checkout above -- see that
+          # module's docstring for why), so it needs the repo name + a
+          # write-capable token here too. No new secret: PRIVATE_REPO_PAT is
+          # the same one the checkout step above already uses, and reaches
+          # this job already via video-pipeline.yml's `secrets: inherit` --
+          # it just wasn't exposed as an env var to THIS step before now.
+          PRIVATE_REPO: aman017181412-dev/yt-core
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m scripts.voice_worker --channel "$CHANNEL"
