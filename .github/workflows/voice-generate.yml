@@ -96,6 +96,27 @@ jobs:
           VOICE_FACTORIES_JSON: ${{ secrets.VOICE_FACTORIES_JSON }}
           VOICE_SERVICE_REPO: ${{ vars.VOICE_SERVICE_REPO }}
           VOICE_SERVICE_DISPATCH_PAT: ${{ secrets.VOICE_SERVICE_DISPATCH_PAT }}
+          # Dashboard "Voice Factory" page: one secret per factory, slot N is
+          # F<N> (Sep 2026) -- same names video-pipeline.yml's "prepare" job
+          # already exposes for dispatch_async()'s eligibility check. THIS
+          # job is where _factory_pool() is actually resolved for real now
+          # (wait_and_merge() does all the claiming/dispatching -- see
+          # voice_clone_client.py's module docstring for why that moved out
+          # of "prepare"), so it needs the exact same slots, not just the
+          # single-factory fallback below. Bug fixed Sep 2026: these were
+          # missing here even though "prepare" had them, so a Dashboard-
+          # configured multi-factory pool silently collapsed to whichever
+          # single fallback factory was ALSO set, right here, every run.
+          VOICE_FACTORY_PAT_F1: ${{ secrets.VOICE_FACTORY_PAT_F1 }}
+          VOICE_FACTORY_PAT_F2: ${{ secrets.VOICE_FACTORY_PAT_F2 }}
+          VOICE_FACTORY_PAT_F3: ${{ secrets.VOICE_FACTORY_PAT_F3 }}
+          VOICE_FACTORY_PAT_F4: ${{ secrets.VOICE_FACTORY_PAT_F4 }}
+          VOICE_FACTORY_PAT_F5: ${{ secrets.VOICE_FACTORY_PAT_F5 }}
+          VOICE_FACTORY_PAT_F6: ${{ secrets.VOICE_FACTORY_PAT_F6 }}
+          VOICE_FACTORY_PAT_F7: ${{ secrets.VOICE_FACTORY_PAT_F7 }}
+          VOICE_FACTORY_PAT_F8: ${{ secrets.VOICE_FACTORY_PAT_F8 }}
+          VOICE_FACTORY_PAT_F9: ${{ secrets.VOICE_FACTORY_PAT_F9 }}
+          VOICE_FACTORY_PAT_F10: ${{ secrets.VOICE_FACTORY_PAT_F10 }}
           # Sep 2026, Dynamic Parallel Factory Allocation: lib/factory_ledger.py
           # reads/writes data/voice_factory_state.json in THIS repo directly
           # over the Contents API (not the local checkout above -- see that
