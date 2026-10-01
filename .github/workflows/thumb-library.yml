@@ -58,11 +58,24 @@ permissions:
 concurrency:
   group: thumb-library
   cancel-in-progress: false
+  # Without this, GitHub's default behaviour cancels the older PENDING run
+  # (not the running one) whenever a third trigger lands while one run is
+  # already going and another is already queued behind it -- e.g. the 00:30
+  # schedule still running when someone clicks "Build now" twice in the
+  # Dashboard. That shows up in the Actions tab as this workflow "Cancelled"
+  # with no further explanation. queue: max keeps every pending trigger
+  # queued instead of dropping the older one.
+  queue: max
 
 jobs:
   library:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # A daily_quantity large enough to actually need building (see builder.py's
+    # plan_auto) can take longer than the old 60-minute budget once several
+    # niche/orientation slots are genuinely short; 60 minutes was also close
+    # to being mistaken for the same "self-cancelling" symptom above, since a
+    # timeout-killed job's conclusion is also reported as "Cancelled".
+    timeout-minutes: 180
     outputs:
       snapshot: ${{ steps.run.outputs.snapshot }}
     steps:
