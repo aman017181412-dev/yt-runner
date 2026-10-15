@@ -34,11 +34,23 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: core/requirements.txt
+          cache-dependency-path: |
+            core/requirements.txt
+            core/requirements-gate.txt
 
+      # HANDOFF §3.8: this job runs EVERY HOUR and only needs the gate's own imports (requests, Pillow, Google API
+      # client). The full requirements.txt (torch, open_clip, rembg, chromadb, faster-whisper, ...) is several GB
+      # of installs for nothing. requirements-gate.txt is derived from trigger_window's transitive import graph and
+      # guarded by tests/test_gate_requirements.py. SAFETY NET: if the gate module cannot even be imported with the
+      # slim set, fall back to the full requirements.txt so the hourly gate can never break because of this change.
       - name: Install dependencies
         working-directory: core
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements-gate.txt
+          python -c "import scripts.trigger_window" || {
+            echo "::warning::requirements-gate.txt is insufficient for scripts.trigger_window; installing full requirements.txt"
+            pip install -r requirements.txt
+          }
 
       - name: Gate check and Telegram poll
         working-directory: core

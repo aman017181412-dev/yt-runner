@@ -38,7 +38,9 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # HANDOFF §3.9: was 90. Encode is now crf 20 (config.json -> encode can raise Long to preset medium, ~2x slower than
+    # veryfast on a 2-core runner: measured 38 s vs 73 s for a 120 s 720p render). 150 keeps headroom for a 60-90 min video.
+    timeout-minutes: 150
     concurrency:
       # Per-CHANNEL only -- this is the heavy footage/edit/upload work,
       # which doesn't touch shared git state, so different channels are
@@ -112,6 +114,7 @@ jobs:
       - name: Run pipeline (publish stage)
         working-directory: core
         env:
+          PYTHONUNBUFFERED: '1'
           CHANNEL: ${{ inputs.channel }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -221,6 +224,8 @@ jobs:
         # data/ entirely, specifically so it never rides along in this
         # commit/patch. See the "Check for new script-hash entries" step
         # below and script_archive.record_global()'s docstring.
+        # step-4: runs even when the pipeline step failed, so a crashed run still records its state/analytics.
+        if: ${{ always() && !cancelled() }}
         id: commit
         working-directory: core
         run: |
@@ -236,12 +241,12 @@ jobs:
           fi
 
       - name: Export commit as a patch
-        if: steps.commit.outputs.changed == 'true'
+        if: ${{ always() && steps.commit.outputs.changed == 'true' }}
         working-directory: core
         run: git format-patch -1 HEAD --stdout > "$GITHUB_WORKSPACE/publish.patch"
 
       - name: Upload patch artifact
-        if: steps.commit.outputs.changed == 'true'
+        if: ${{ always() && steps.commit.outputs.changed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: publish-patch-${{ inputs.channel }}-${{ github.run_id }}
@@ -255,6 +260,7 @@ jobs:
         # errored-before-upload run has nothing here, same "changed=false,
         # skip downstream" shape as the commit step above.
         id: hashes
+        if: ${{ always() && !cancelled() }}
         working-directory: core
         run: |
           if [ -s new_hashes.json ]; then
@@ -264,7 +270,7 @@ jobs:
           fi
 
       - name: Upload new hashes artifact
-        if: steps.hashes.outputs.changed == 'true'
+        if: ${{ always() && steps.hashes.outputs.changed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: new-hashes-${{ inputs.channel }}-${{ github.run_id }}

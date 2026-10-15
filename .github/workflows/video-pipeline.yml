@@ -21,7 +21,9 @@ jobs:
   # only the git-push-sensitive step actually needs it.
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # HANDOFF §3.8: was 30 -- a real Long-form script step alone took 77 minutes (knowyourrights1), so prepare was
+    # being cancelled mid-script. 120 leaves headroom; the job still ends as soon as the script is done.
+    timeout-minutes: 120
     concurrency:
       # Per-CHANNEL only, so this channel can't double-run against
       # itself if triggered twice in quick succession -- different
@@ -46,16 +48,16 @@ jobs:
           cache: pip
           cache-dependency-path: core/requirements.txt
 
+      # HANDOFF §3.8: tesseract-ocr and the Playwright browser are NOT installed in this job any more. In
+      # run_pipeline.py `--stage=prepare` returns right after the voice dispatch (before footage, thumbnail,
+      # tutorial_capture and every local_checker/OCR call); thumbnail.py and tutorial_capture.py import
+      # playwright lazily, and the `publish-render` job (publish-render.yml) still installs both.
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core tesseract-ocr
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
 
       - name: Install Python dependencies
         working-directory: core
         run: pip install -r requirements.txt
-
-      - name: Install Playwright browser (for optional tutorial screen recording)
-        working-directory: core
-        run: python -m playwright install --with-deps chromium
 
       - name: Resolve pipeline folder path
         id: folder
@@ -67,6 +69,7 @@ jobs:
       - name: Run pipeline (prepare stage)
         working-directory: core
         env:
+          PYTHONUNBUFFERED: '1'
           CHANNEL: ${{ inputs.channel }}
           # Single-key setup (unchanged): GROQ_API_KEY / OPENROUTER_API_KEY.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -136,6 +139,9 @@ jobs:
           VOICE_FACTORY_PAT_F9: ${{ secrets.VOICE_FACTORY_PAT_F9 }}
           VOICE_FACTORY_PAT_F10: ${{ secrets.VOICE_FACTORY_PAT_F10 }}
           YOUTUBE_RESEARCH_API_KEY: ${{ secrets.YOUTUBE_RESEARCH_API_KEY }}
+          # Optional (HANDOFF §3.10): Reddit app-only OAuth for research.reddit_topics(); empty -> anonymous (403 from Actions IPs)
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
         run: python -m scripts.run_pipeline --stage=prepare --channel "$CHANNEL"
 
       - name: Upload prepared pipeline data
@@ -188,6 +194,8 @@ jobs:
   # comment for both parts.
   publish-commit:
     needs: publish-render
+    # step-4: publish-commit used to be skipped whenever publish-render failed, even after the video was uploaded.
+    if: ${{ always() && needs.publish-render.result != 'cancelled' && (needs.publish-render.outputs.changed == 'true' || needs.publish-render.outputs.hashes_changed == 'true') }}
     uses: ./.github/workflows/publish-commit.yml
     with:
       channel: ${{ inputs.channel }}
