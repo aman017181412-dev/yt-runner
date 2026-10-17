@@ -1,0 +1,227 @@
+name: Thumbnail Library
+
+# Controlled from the Dashboard (Thumbnail Library page): auto-generation ON/OFF,
+# the daily quantity, which channels are selected, and the worker list all live in
+# yt-core's data/thumbnail_control.json, which this workflow reads on every run.
+#
+# Manual actions (Run workflow):
+#   selftest               check Turso, Telegram Storage Bot (no image generated)
+#   selftest-with-workers  same, plus one small real image per Worker (uses free quota)
+#   status                 registry, counts, counters, worker state (+ refreshes the Dashboard snapshot)
+#   build                  pre-build stock:  niche + video_type + count
+#   auto                   build today's stock NOW (Dashboard "Build now"): ignores the ON/OFF
+#                          switch but still honours the daily quantity
+#   retire-legacy          stop using thumbnails made before the richer metadata (niche or all)
+#
+# SCHEDULE: every day at 00:30 UTC (06:30 Bangladesh time), right after the free
+# Workers AI quota resets. The scheduled run does nothing unless auto-generation
+# is switched ON in the Dashboard -- so this file never needs editing to turn it
+# on or off.
+#
+# Deliberately no pull_request / pull_request_target trigger.
+on:
+  schedule:
+    # step-4: four runs/day; Workers AI free quota resets 00:00 UTC, the run at 00:05 is the first one after the reset.
+    - cron: '5 0 * * *'
+    - cron: '5 6 * * *'
+    - cron: '5 12 * * *'
+    - cron: '5 18 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to run'
+        type: choice
+        default: status
+        options:
+          - status
+          - auto
+          - selftest
+          - selftest-with-workers
+          - build
+          - retire-legacy
+      niche:
+        description: 'build / retire-legacy: niche key (e.g. finance-genz) or all'
+        required: false
+        type: string
+      video_type:
+        description: 'build only'
+        type: choice
+        default: long
+        options:
+          - long
+          - short
+      count:
+        description: 'build only: images per niche (max 30)'
+        required: false
+        default: '5'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thumb-library
+  cancel-in-progress: false
+  # Without this, GitHub's default behaviour cancels the older PENDING run
+  # (not the running one) whenever a third trigger lands while one run is
+  # already going and another is already queued behind it -- e.g. the 00:30
+  # schedule still running when someone clicks "Build now" twice in the
+  # Dashboard. That shows up in the Actions tab as this workflow "Cancelled"
+  # with no further explanation. queue: max keeps every pending trigger
+  # queued instead of dropping the older one.
+  queue: max
+
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    # A daily_quantity large enough to actually need building (see builder.py's
+    # plan_auto) can take longer than the old 60-minute budget once several
+    # niche/orientation slots are genuinely short; 60 minutes was also close
+    # to being mistaken for the same "self-cancelling" symptom above, since a
+    # timeout-killed job's conclusion is also reported as "Cancelled".
+    timeout-minutes: 180
+    outputs:
+      snapshot: ${{ steps.run.outputs.snapshot }}
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (tesseract = the "no text in the image" check)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
+      # Only what the library needs -- not the pipeline's full requirements.txt
+      # (torch, chromadb, ...), so this finishes in about a minute.
+      - name: Install Python dependencies
+        run: pip install "requests>=2.31,<3" "Pillow>=10.0,<12" "numpy>=1.26,<3" "opencv-python-headless>=4.9,<5" "pytesseract>=0.3,<1"
+
+      - name: Run
+        id: run
+        working-directory: core
+        env:
+          ACTION: ${{ github.event_name == 'schedule' && 'auto' || inputs.action }}
+          EVENT: ${{ github.event_name }}
+          NICHE: ${{ inputs.niche }}
+          VIDEO_TYPE: ${{ inputs.video_type }}
+          COUNT: ${{ inputs.count }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          THUMB_STORE_BOT_TOKEN: ${{ secrets.THUMB_STORE_BOT_TOKEN }}
+          THUMB_STORE_CHAT_ID: ${{ secrets.THUMB_STORE_CHAT_ID }}
+          IMG_WORKERS_JSON: ${{ secrets.IMG_WORKERS_JSON }}
+          # Dashboard-managed workers: slot N's API key is the secret IMG_WORKER_KEY_W<N>
+          # (ten fixed slots -> adding a worker in the Dashboard never needs a YAML edit)
+          IMG_WORKER_KEY_W1: ${{ secrets.IMG_WORKER_KEY_W1 }}
+          IMG_WORKER_KEY_W2: ${{ secrets.IMG_WORKER_KEY_W2 }}
+          IMG_WORKER_KEY_W3: ${{ secrets.IMG_WORKER_KEY_W3 }}
+          IMG_WORKER_KEY_W4: ${{ secrets.IMG_WORKER_KEY_W4 }}
+          IMG_WORKER_KEY_W5: ${{ secrets.IMG_WORKER_KEY_W5 }}
+          IMG_WORKER_KEY_W6: ${{ secrets.IMG_WORKER_KEY_W6 }}
+          IMG_WORKER_KEY_W7: ${{ secrets.IMG_WORKER_KEY_W7 }}
+          IMG_WORKER_KEY_W8: ${{ secrets.IMG_WORKER_KEY_W8 }}
+          IMG_WORKER_KEY_W9: ${{ secrets.IMG_WORKER_KEY_W9 }}
+          IMG_WORKER_KEY_W10: ${{ secrets.IMG_WORKER_KEY_W10 }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -e
+          SNAP=0
+          case "$ACTION" in
+            selftest)
+              python -m scripts.thumb_library.selftest --notify ;;
+            selftest-with-workers)
+              python -m scripts.thumb_library.selftest --workers --notify ;;
+            status)
+              SNAP=1 ;;
+            auto)
+              if [ "$EVENT" = "schedule" ]; then
+                python -m scripts.thumb_library.builder --auto --trigger schedule --notify
+              else
+                python -m scripts.thumb_library.builder --auto --force --trigger dashboard --notify
+              fi
+              SNAP=1 ;;
+            retire-legacy)
+              if [ -z "$NICHE" ]; then echo "retire-legacy needs a niche (or 'all')"; exit 1; fi
+              python -m scripts.thumb_library.admin retire-legacy --niche "$NICHE"
+              SNAP=1 ;;
+            build)
+              if [ -z "$NICHE" ]; then echo "build needs a niche (or 'all')"; exit 1; fi
+              case "$COUNT" in ''|*[!0-9]*) COUNT=5 ;; esac
+              python -m scripts.thumb_library.builder --niche "$NICHE" --video-type "$VIDEO_TYPE" --count "$COUNT" --notify
+              SNAP=1 ;;
+            *)
+              echo "unknown action"; exit 1 ;;
+          esac
+          if [ "$SNAP" = "1" ]; then
+            python -m scripts.thumb_library.status --json "$GITHUB_WORKSPACE/snapshot/thumbnail_library_status.json"
+            echo "snapshot=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload snapshot for the Dashboard
+        if: steps.run.outputs.snapshot == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: thumb-status
+          path: snapshot/thumbnail_library_status.json
+          retention-days: 1
+
+  # Commits data/thumbnail_library_status.json to yt-core (what the Dashboard's
+  # Thumbnail Library page reads). Deliberately NOT in the shared "video-pipeline"
+  # concurrency group: with cancel-in-progress off, GitHub keeps only ONE pending run per
+  # group and cancels the older pending ones -- a status push must never be able to
+  # cancel a channel's pending publish-commit. The retry loop below handles races instead.
+  publish-status:
+    needs: library
+    if: needs.library.outputs.snapshot == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: thumb-status-push
+      cancel-in-progress: false
+    steps:
+      - name: Download snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: thumb-status
+          path: snapshot
+
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 0
+
+      - name: Commit snapshot (retry on race)
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          PRIVATE_REPO: aman017181412-dev/yt-core
+        run: |
+          set -e
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          for i in 1 2 3 4 5; do
+            git fetch "$REMOTE" main
+            git checkout -B main FETCH_HEAD
+            mkdir -p data
+            cp "$GITHUB_WORKSPACE/snapshot/thumbnail_library_status.json" data/thumbnail_library_status.json
+            git add data/thumbnail_library_status.json
+            if git diff --cached --quiet; then echo "snapshot unchanged"; exit 0; fi
+            git commit -m "thumbnail library: status snapshot"
+            if git push "$REMOTE" HEAD:main; then echo "snapshot pushed"; exit 0; fi
+            echo "push raced with another commit (attempt $i/5); retrying..."
+            sleep 5
+          done
+          echo "could not push the snapshot after 5 attempts (non-fatal: the Dashboard just shows the previous one)"
+          exit 0

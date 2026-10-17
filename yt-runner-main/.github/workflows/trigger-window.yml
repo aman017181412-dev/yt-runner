@@ -1,0 +1,127 @@
+name: Trigger Window
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 * * * *'
+  # Deliberately no pull_request or pull_request_target trigger.
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: trigger-window
+  cancel-in-progress: false
+
+env:
+  PRIVATE_REPO: aman017181412-dev/yt-core
+
+jobs:
+  gate-and-poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            core/requirements.txt
+            core/requirements-gate.txt
+
+      # HANDOFF §3.8: this job runs EVERY HOUR and only needs the gate's own imports (requests, Pillow, Google API
+      # client). The full requirements.txt (torch, open_clip, rembg, chromadb, faster-whisper, ...) is several GB
+      # of installs for nothing. requirements-gate.txt is derived from trigger_window's transitive import graph and
+      # guarded by tests/test_gate_requirements.py. SAFETY NET: if the gate module cannot even be imported with the
+      # slim set, fall back to the full requirements.txt so the hourly gate can never break because of this change.
+      - name: Install dependencies
+        working-directory: core
+        run: |
+          pip install -r requirements-gate.txt
+          python -c "import scripts.trigger_window" || {
+            echo "::warning::requirements-gate.txt is insufficient for scripts.trigger_window; installing full requirements.txt"
+            pip install -r requirements.txt
+          }
+
+      - name: Gate check and Telegram poll
+        working-directory: core
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ github.repository }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+          # This job also runs ab_test.run_rotation() and reoptimize.run_check()
+          # every hour (see trigger_window.py's main()) -- both call the
+          # YouTube Data/Analytics API per channel and reoptimize.py also
+          # calls an LLM, so these need to be here too, not just in
+          # video-pipeline.yml.
+          CHANNEL1_YT_TOKEN: ${{ secrets.CHANNEL1_YT_TOKEN }}
+          CHANNEL2_YT_TOKEN: ${{ secrets.CHANNEL2_YT_TOKEN }}
+          YT_CHANNEL_TOKENS_JSON: ${{ secrets.YT_CHANNEL_TOKENS_JSON }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Dashboard "API keys" page: one secret per key, slot N is _K<N> (Sep 2026)
+          GROQ_API_KEY_K1: ${{ secrets.GROQ_API_KEY_K1 }}
+          GROQ_API_KEY_K2: ${{ secrets.GROQ_API_KEY_K2 }}
+          GROQ_API_KEY_K3: ${{ secrets.GROQ_API_KEY_K3 }}
+          GROQ_API_KEY_K4: ${{ secrets.GROQ_API_KEY_K4 }}
+          GROQ_API_KEY_K5: ${{ secrets.GROQ_API_KEY_K5 }}
+          GROQ_API_KEY_K6: ${{ secrets.GROQ_API_KEY_K6 }}
+          GROQ_API_KEY_K7: ${{ secrets.GROQ_API_KEY_K7 }}
+          GROQ_API_KEY_K8: ${{ secrets.GROQ_API_KEY_K8 }}
+          GROQ_API_KEY_K9: ${{ secrets.GROQ_API_KEY_K9 }}
+          GROQ_API_KEY_K10: ${{ secrets.GROQ_API_KEY_K10 }}
+          OPENROUTER_API_KEY_K1: ${{ secrets.OPENROUTER_API_KEY_K1 }}
+          OPENROUTER_API_KEY_K2: ${{ secrets.OPENROUTER_API_KEY_K2 }}
+          OPENROUTER_API_KEY_K3: ${{ secrets.OPENROUTER_API_KEY_K3 }}
+          OPENROUTER_API_KEY_K4: ${{ secrets.OPENROUTER_API_KEY_K4 }}
+          OPENROUTER_API_KEY_K5: ${{ secrets.OPENROUTER_API_KEY_K5 }}
+          OPENROUTER_API_KEY_K6: ${{ secrets.OPENROUTER_API_KEY_K6 }}
+          OPENROUTER_API_KEY_K7: ${{ secrets.OPENROUTER_API_KEY_K7 }}
+          OPENROUTER_API_KEY_K8: ${{ secrets.OPENROUTER_API_KEY_K8 }}
+          OPENROUTER_API_KEY_K9: ${{ secrets.OPENROUTER_API_KEY_K9 }}
+          OPENROUTER_API_KEY_K10: ${{ secrets.OPENROUTER_API_KEY_K10 }}
+          GEMINI_API_KEY_K1: ${{ secrets.GEMINI_API_KEY_K1 }}
+          GEMINI_API_KEY_K2: ${{ secrets.GEMINI_API_KEY_K2 }}
+          GEMINI_API_KEY_K3: ${{ secrets.GEMINI_API_KEY_K3 }}
+          GEMINI_API_KEY_K4: ${{ secrets.GEMINI_API_KEY_K4 }}
+          GEMINI_API_KEY_K5: ${{ secrets.GEMINI_API_KEY_K5 }}
+          GEMINI_API_KEY_K6: ${{ secrets.GEMINI_API_KEY_K6 }}
+          GEMINI_API_KEY_K7: ${{ secrets.GEMINI_API_KEY_K7 }}
+          GEMINI_API_KEY_K8: ${{ secrets.GEMINI_API_KEY_K8 }}
+          GEMINI_API_KEY_K9: ${{ secrets.GEMINI_API_KEY_K9 }}
+          GEMINI_API_KEY_K10: ${{ secrets.GEMINI_API_KEY_K10 }}
+        run: python -m scripts.trigger_window
+
+      - name: Commit Telegram configuration changes
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add config.json data/
+          git commit -m "auto: persist Telegram configuration $(date -u +%F-%H%M)" || echo "No configuration changes"
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
+          for i in 1 2 3 4 5; do
+            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && { echo "push succeeded"; exit 0; }
+            echo "Push conflict (attempt $i/5); retrying..."
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "Unable to push after 5 attempts" >&2
+          exit 1
