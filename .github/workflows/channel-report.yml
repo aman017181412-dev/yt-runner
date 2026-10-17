@@ -1,0 +1,49 @@
+name: Channel Health Report
+
+# Manual button: sends a detailed per-channel report to Telegram right now (read-only, changes nothing).
+# Shows each channel's last upload date, 7-day uploaded/held/rejected counts, warning count (n/3),
+# the reason nothing uploaded, and the projected next-warning / delete dates.
+# Same report is also available from Telegram with:  /check   or   /check <channel>
+# (the Telegram command is answered at the next hourly trigger window; this button is instant).
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Only this channel key (leave empty for all)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: core
+        run: pip install -r requirements-gate.txt
+
+      - name: Send report to Telegram
+        working-directory: core
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          if [ -n "$CHANNEL" ] && ! [[ "$CHANNEL" =~ ^[a-z0-9_-]+$ ]]; then echo "::error::invalid channel key"; exit 1; fi
+          python -m scripts.channel_lifecycle --report --telegram ${CHANNEL:+--channel "$CHANNEL"}
