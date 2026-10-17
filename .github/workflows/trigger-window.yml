@@ -7,7 +7,7 @@ on:
   # Deliberately no pull_request or pull_request_target trigger.
 
 permissions:
-  contents: read
+  contents: write   # channel_lifecycle edits this repo's data/channel_auth_config.json + token_renewed.json when it removes a dead channel
   actions: write
 
 concurrency:
@@ -59,6 +59,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_TOKEN: ${{ github.token }}
           PUBLIC_REPO: ${{ github.repository }}
+          RUNNER_ADMIN_PAT: ${{ secrets.RUNNER_ADMIN_PAT }}   # optional: PAT with Secrets:write so a removed channel's CHANNEL_YT_TOKEN secret is deleted too
           PRIVATE_REPO: ${{ env.PRIVATE_REPO }}
           # This job also runs ab_test.run_rotation() and reoptimize.run_check()
           # every hour (see trigger_window.py's main()) -- both call the
@@ -114,7 +115,7 @@ jobs:
         run: |
           git config user.name "yt-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add config.json data/
+          git add -A config.json config/ data/
           git commit -m "auto: persist Telegram configuration $(date -u +%F-%H%M)" || echo "No configuration changes"
           REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/${PRIVATE_REPO}.git"
           for i in 1 2 3 4 5; do

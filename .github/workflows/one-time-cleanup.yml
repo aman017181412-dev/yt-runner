@@ -1,0 +1,114 @@
+name: One-time Channel Cleanup
+
+# Manual only. Deletes the listed channel keys "everywhere" (yt-core config + data folder + voice map +
+# thumbnail niche list, and this repo's channel_auth_config / token_renewed / CHANNEL_YT_TOKEN secret),
+# and strips thumbnail image bytes from every ab_tests.json. Same code the daily watchdog uses
+# (yt-core scripts/channel_lifecycle.py) -- this just runs it once, now, for a list you choose.
+#
+# FIRST RUN: leave dry_run = true and read the log. Run again with dry_run = false to apply.
+# Old files stay recoverable from git history (until/unless history is rewritten).
+
+on:
+  workflow_dispatch:
+    inputs:
+      keys:
+        description: 'Channel keys to delete (space separated)'
+        required: true
+        default: 'aiworkflowsolo knowyourrights aiworkflowsolo2 channel1 channel2 financegenz1 startupautopsy testchannel1 legalconsumerrights aiworkflowsolo1'
+      dry_run:
+        description: 'Only show what would happen'
+        type: boolean
+        default: true
+      force:
+        description: 'Ignore the "run / voice job in flight" guard'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trigger-window      # same group as the hourly gate, so the two never race on config.json
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout this repo (runner)
+        uses: actions/checkout@v4
+        with:
+          path: runner
+
+      - name: Checkout private core repo
+        uses: actions/checkout@v4
+        with:
+          repository: aman017181412-dev/yt-core
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: core
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: core
+        run: pip install -r requirements-gate.txt
+
+      - name: Purge channels
+        working-directory: core
+        env:
+          KEYS: ${{ inputs.keys }}
+          DRY: ${{ inputs.dry_run }}
+          FORCE: ${{ inputs.force }}
+          PUBLIC_REPO: ${{ github.repository }}
+          RUNNER_ADMIN_PAT: ${{ secrets.RUNNER_ADMIN_PAT }}
+        run: |
+          if ! [[ "$KEYS" =~ ^[a-z0-9_\ -]+$ ]]; then echo "::error::invalid channel keys"; exit 1; fi
+          FLAGS=""
+          [ "$DRY" = "true" ] && FLAGS="$FLAGS --dry-run"
+          [ "$FORCE" = "true" ] && FLAGS="$FLAGS --force"
+          for k in $KEYS; do
+            echo "=== $k ==="
+            python -m scripts.channel_lifecycle --purge "$k" $FLAGS --runner-dir "$GITHUB_WORKSPACE/runner"
+          done
+
+      - name: Strip unusable thumbnail bytes from ab_tests.json
+        if: ${{ !inputs.dry_run }}
+        working-directory: core
+        run: python -c "from scripts import ab_test; print('files rewritten:', ab_test.cleanup_all())"
+
+      - name: Commit + push yt-core
+        if: ${{ !inputs.dry_run }}
+        working-directory: core
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A config.json config/ data/
+          git commit -m "chore: one-time channel cleanup + ab_tests image purge" || { echo "nothing to commit"; exit 0; }
+          REMOTE="https://x-access-token:${PRIVATE_REPO_PAT}@github.com/aman017181412-dev/yt-core.git"
+          for i in 1 2 3 4 5; do
+            git pull --rebase "$REMOTE" main && git push "$REMOTE" HEAD:main && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((RANDOM % 10 + 5))
+          done
+          echo "::error::could not push yt-core"; exit 1
+
+      - name: Commit + push this repo (runner)
+        if: ${{ !inputs.dry_run }}
+        working-directory: runner
+        run: |
+          git config user.name "yt-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A data/
+          git commit -m "chore: one-time channel cleanup (auth config + token_renewed)" || { echo "nothing to commit"; exit 0; }
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep 5
+          done
+          echo "::error::could not push runner"; exit 1
