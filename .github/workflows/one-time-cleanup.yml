@@ -14,7 +14,7 @@ on:
       keys:
         description: 'Channel keys to delete (space separated)'
         required: true
-        default: 'aiworkflowsolo knowyourrights aiworkflowsolo2 channel1 channel2 financegenz1 startupautopsy testchannel1 legalconsumerrights aiworkflowsolo1'
+        default: 'knowyourrights aiworkflowsolo2 channel1 channel2 financegenz1 startupautopsy testchannel1 legalconsumerrights aiworkflowsolo1'
       dry_run:
         description: 'Only show what would happen'
         type: boolean

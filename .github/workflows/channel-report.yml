@@ -1,6 +1,9 @@
 name: Channel Health Report
 
 # Manual button: sends a detailed per-channel report to Telegram right now (read-only, changes nothing).
+# Checks every place a channel key lives (config, data, voice map, thumbnail niches, runner auth config,
+# token_renewed, Actions secrets), flags 2 keys feeding the same YouTube channel / same niche, token age,
+# and ends with copy-paste delete lists for the One-time Channel Cleanup workflow.
 # Shows each channel's last upload date, 7-day uploaded/held/rejected counts, warning count (n/3),
 # the reason nothing uploaded, and the projected next-warning / delete dates.
 # Same report is also available from Telegram with:  /check   or   /check <channel>
@@ -22,6 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout this repo (runner)
+        uses: actions/checkout@v4
+        with:
+          path: runner
+
       - name: Checkout private core repo
         uses: actions/checkout@v4
         with:
@@ -44,6 +52,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CHANNEL: ${{ inputs.channel }}
+          PUBLIC_REPO: ${{ github.repository }}
+          RUNNER_ADMIN_PAT: ${{ secrets.RUNNER_ADMIN_PAT }}   # optional: lets the report see (and the cleanup delete) CHANNEL_YT_TOKEN secrets
         run: |
           if [ -n "$CHANNEL" ] && ! [[ "$CHANNEL" =~ ^[a-z0-9_-]+$ ]]; then echo "::error::invalid channel key"; exit 1; fi
-          python -m scripts.channel_lifecycle --report --telegram ${CHANNEL:+--channel "$CHANNEL"}
+          python -m scripts.channel_lifecycle --report --telegram --runner-dir "$GITHUB_WORKSPACE/runner" ${CHANNEL:+--channel "$CHANNEL"}
